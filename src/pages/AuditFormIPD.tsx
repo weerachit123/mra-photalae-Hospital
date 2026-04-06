@@ -1,0 +1,402 @@
+import React, { useState, useEffect } from 'react';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
+import { getIPDCriteria } from './EditCriteria';
+import { Save, ArrowLeft, Info, Check, X, Minus, MessageSquare, Plus } from 'lucide-react';
+
+// --- Reason Modal Component ---
+interface ReasonModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: (reason: string) => void;
+  criteriaKey: string;
+  criteriaName: string;
+}
+
+function ReasonModal({ isOpen, onClose, onSave, criteriaKey, criteriaName }: ReasonModalProps) {
+  const [reasons, setReasons] = useState<string[]>([]);
+  const [newReason, setNewReason] = useState('');
+
+  useEffect(() => {
+    if (isOpen) {
+      const saved = localStorage.getItem(`mra_reasons_ipd_${criteriaKey}`);
+      setReasons(saved ? JSON.parse(saved) : []);
+    }
+  }, [isOpen, criteriaKey]);
+
+  const handleSave = (reason: string) => {
+    if (!reason.trim()) return;
+    
+    const updatedReasons = Array.from(new Set([...reasons, reason.trim()]));
+    localStorage.setItem(`mra_reasons_ipd_${criteriaKey}`, JSON.stringify(updatedReasons));
+    
+    onSave(reason.trim());
+    setNewReason('');
+    onClose();
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+          <h3 className="font-bold text-slate-800 flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-red-500" />
+            ระบุเหตุผลที่ให้ 0 คะแนน
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">หัวข้อ: {criteriaName}</div>
+          
+          {reasons.length > 0 && (
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-500">เลือกจากเหตุผลที่เคยบันทึก:</label>
+              <div className="max-h-40 overflow-y-auto space-y-1 pr-2 custom-scrollbar">
+                {reasons.map((r, i) => (
+                  <button
+                    key={i}
+                    onClick={() => handleSave(r)}
+                    className="w-full text-left px-3 py-2 text-sm rounded-lg border border-slate-100 hover:border-red-200 hover:bg-red-50 text-slate-600 transition-all"
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-500">พิมพ์เหตุผลใหม่:</label>
+            <textarea
+              value={newReason}
+              onChange={(e) => setNewReason(e.target.value)}
+              placeholder="ระบุเหตุผล..."
+              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 min-h-[100px] transition-all"
+            />
+          </div>
+        </div>
+        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">ยกเลิก</button>
+          <button
+            onClick={() => handleSave(newReason)}
+            disabled={!newReason.trim()}
+            className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white px-6 py-2 rounded-xl text-sm font-bold shadow-lg shadow-red-100 transition-all active:scale-95 flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            บันทึกเหตุผล
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const ROWS = [
+  { id: '1', name: "Discharge summary : Dx, Op", cols: ['1','1','1','1','1','1','1','1','1'] },
+  { id: '2', name: "Discharge summary : Other", cols: ['1','1','1','1','1','1','1','-','-'] },
+  { id: '3', name: "Informed consent", cols: ['1','1','1','1','1','1','1','1','-'] },
+  { id: '4', name: "History", cols: ['1','1','1','1','1','1','1','1','1'] },
+  { id: '5', name: "Physical examination", cols: ['1','1','1','1','1','1','1','1','1'] },
+  { id: '6', name: "Progress note", cols: ['1','1','1','1','1','1','-','-','-'] },
+  { id: '7', name: "Consultation record", cols: ['-','-','-','-','-','-','-','-','-'] },
+  { id: '8', name: "Anaesthetic record", cols: ['-','-','-','-','-','-','-','-','-'] },
+  { id: '9', name: "Operative note", cols: ['-','-','-','-','-','-','-','-','-'] },
+  { id: '10', name: "Labour record", cols: ['-','-','-','-','-','-','-','-','-'] },
+  { id: '11', name: "Rehabilitation record", cols: ['-','-','-','-','-','-','-','-','-'] },
+  { id: '12', name: "Nurses' note helpful", cols: ['1','1','1','1','1','-','-','-','-'] },
+];
+
+export default function AuditFormIPD() {
+  const { an } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const caseData = location.state || {};
+
+  const [scores, setScores] = useState<Record<string, string>>({});
+  const [reasons, setCaseReasons] = useState<Record<string, string>>({});
+  const [hoveredCriteria, setHoveredCriteria] = useState<string | null>(null);
+  const [ipdCriteria, setIpdCriteria] = useState<Record<string, string[]>>({});
+
+  // Modal State
+  const [modalConfig, setModalConfig] = useState<{ isOpen: boolean; key: string; name: string } | null>(null);
+
+  useEffect(() => {
+    setIpdCriteria(getIPDCriteria());
+  }, []);
+
+  const toggleScore = (rowId: string, colIdx: number | string, defaultVal: string) => {
+    if (defaultVal === '-') return; // Disabled
+    
+    const key = `${rowId}_${colIdx}`;
+    const current = scores[key] || defaultVal;
+    
+    // Toggle logic: 1 -> 0 -> N -> 1
+    let next = '1';
+    if (current === '1') {
+      next = '0';
+      // Trigger reason modal for score 0
+      const row = ROWS.find(r => r.id === rowId);
+      setModalConfig({
+        isOpen: true,
+        key: `${rowId}_${colIdx}`,
+        name: `${row?.name} (ข้อ ${Number(colIdx) + 1})`
+      });
+    }
+    else if (current === '0') next = 'N';
+    else if (current === 'N') next = '1';
+
+    setScores(prev => ({ ...prev, [key]: next }));
+  };
+
+  const handleReasonSave = (reason: string) => {
+    if (modalConfig) {
+      setCaseReasons(prev => ({ ...prev, [modalConfig.key]: reason }));
+    }
+  };
+
+  const getScore = (rowId: string, colIdx: number | string, defaultVal: string) => {
+    if (defaultVal === '-') return '-';
+    return scores[`${rowId}_${colIdx}`] || defaultVal;
+  };
+
+  const handleSave = () => {
+    const searchParams = new URLSearchParams(location.search);
+    const wsId = searchParams.get('wsId');
+
+    if (wsId) {
+      const saved = localStorage.getItem('mra_worksheets');
+      if (saved) {
+        const worksheets = JSON.parse(saved);
+        const wsIndex = worksheets.findIndex((w: any) => w.id === wsId);
+        if (wsIndex >= 0) {
+          const caseIndex = worksheets[wsIndex].cases.findIndex((c: any) => c.an === an);
+          if (caseIndex >= 0) {
+            worksheets[wsIndex].cases[caseIndex].status = 'audited';
+            worksheets[wsIndex].cases[caseIndex].scores = scores;
+            worksheets[wsIndex].cases[caseIndex].reasons = reasons;
+            localStorage.setItem('mra_worksheets', JSON.stringify(worksheets));
+          }
+        }
+      }
+    }
+
+    alert('บันทึกข้อมูลเรียบร้อยแล้ว');
+    navigate(-1);
+  };
+
+  return (
+    <div className="space-y-4">
+      {modalConfig && (
+        <ReasonModal
+          isOpen={modalConfig.isOpen}
+          onClose={() => setModalConfig(null)}
+          onSave={handleReasonSave}
+          criteriaKey={modalConfig.key}
+          criteriaName={modalConfig.name}
+        />
+      )}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-100 bg-white flex items-center justify-between">
+          <div className="flex items-center">
+            <button 
+              onClick={() => navigate(-1)}
+              className="mr-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-all active:scale-95 border border-slate-100"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <div>
+              <h3 className="text-lg font-bold text-slate-800 tracking-tight">
+                แบบบันทึกตรวจประเมินเวชระเบียนผู้ป่วยใน
+              </h3>
+              <p className="text-xs text-slate-500 font-medium">
+                AN: <span className="text-slate-800 font-bold">{an}</span> | HN: <span className="text-slate-800 font-bold">{caseData.hn}</span>
+              </p>
+            </div>
+          </div>
+          <button 
+            onClick={handleSave}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg shadow-md shadow-emerald-100 flex items-center text-sm transition-all active:scale-95"
+          >
+            <Save className="w-4 h-4 mr-2" />
+            บันทึก
+          </button>
+        </div>
+
+        <div className="p-4">
+          {/* Header Info Grid - Compact */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div>
+              <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">HCODE</label>
+              <div className="text-xs font-bold text-slate-700">10670</div>
+            </div>
+            <div>
+              <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">แพทย์ผู้ตรวจ</label>
+              <div className="text-xs font-bold text-slate-700 truncate">{caseData.doctor_name || '-'}</div>
+            </div>
+            <div>
+              <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">วันที่ Admit / Discharge</label>
+              <div className="text-[10px] font-bold text-slate-700 truncate">
+                {caseData.regdate} - {caseData.dchdate}
+              </div>
+            </div>
+            <div>
+              <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">วันที่ประเมิน</label>
+              <input type="date" className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 focus:outline-none" defaultValue={new Date().toISOString().split('T')[0]} />
+            </div>
+          </div>
+
+          {/* Criteria Description Zone - Smaller */}
+          <div className="mb-4 min-h-[60px] p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-center text-blue-800 text-center shadow-sm">
+            {hoveredCriteria ? (
+              <div className="flex items-center gap-2">
+                <Info className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                <p className="text-xs font-bold leading-tight">{hoveredCriteria}</p>
+              </div>
+            ) : (
+              <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest italic">ชี้ที่ปุ่มเพื่อดูเกณฑ์การประเมิน</p>
+            )}
+          </div>
+
+          {/* Audit Table - Compact */}
+          <div className="mb-4 overflow-hidden border border-slate-200 rounded-xl shadow-sm">
+            <table className="w-full border-collapse text-center text-xs">
+              <thead>
+                <tr className="bg-slate-900 text-white">
+                  <th className="px-3 py-2 text-left font-bold uppercase tracking-tighter">Content of medical record</th>
+                  <th className="px-1 py-2 font-bold uppercase tracking-tighter w-10">NA</th>
+                  <th className="px-1 py-2 font-bold uppercase tracking-tighter w-10">Miss</th>
+                  <th className="px-1 py-2 font-bold uppercase tracking-tighter w-10">No</th>
+                  {[1,2,3,4,5,6,7,8,9].map(i => (
+                    <th key={i} className="px-1 py-2 font-bold uppercase tracking-tighter w-10">{i}</th>
+                  ))}
+                  <th className="px-2 py-2 font-bold uppercase tracking-tighter w-12">หัก</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {ROWS.map((row, idx) => {
+                  const isNA = getScore(row.id, 'NA', 'N') === '1';
+                  const isMiss = getScore(row.id, 'M', 'M') === '1';
+                  
+                  let rowBgClass = 'bg-white';
+                  if (isNA) rowBgClass = 'bg-slate-100';
+                  else if (isMiss) rowBgClass = 'bg-red-50';
+
+                  return (
+                    <tr key={row.id} className={`group transition-colors ${rowBgClass} ${!isNA && !isMiss ? 'hover:bg-slate-50' : ''}`}>
+                      <td className="px-3 py-2 text-left font-bold text-slate-700">
+                        {row.name}
+                      </td>
+                      <td className="px-1 py-2">
+                        <div className="flex justify-center">
+                          <button 
+                            className={`w-6 h-6 rounded-md border flex items-center justify-center transition-all active:scale-90 ${
+                              isNA 
+                                ? 'bg-slate-500 border-slate-500 text-white' 
+                                : 'bg-white border-slate-200 text-slate-300 hover:border-slate-400'
+                            }`}
+                            onClick={() => toggleScore(row.id, 'NA', 'N')}
+                          >
+                            {isNA ? <Check className="w-3 h-3" /> : <Minus className="w-2 h-2" />}
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-1 py-2">
+                        <div className="flex justify-center">
+                          <button 
+                            className={`w-6 h-6 rounded-md border flex items-center justify-center transition-all active:scale-90 ${
+                              isMiss 
+                                ? 'bg-red-500 border-red-500 text-white' 
+                                : 'bg-white border-slate-200 text-slate-300 hover:border-red-400'
+                            }`}
+                            onClick={() => toggleScore(row.id, 'M', 'M')}
+                          >
+                            {isMiss ? <Check className="w-3 h-3" /> : <Minus className="w-2 h-2" />}
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-1 py-2">
+                        <div className="flex justify-center">
+                          <button 
+                            className={`w-6 h-6 rounded-md border flex items-center justify-center transition-all active:scale-90 ${
+                              getScore(row.id, 'O', 'O') === '1' 
+                                ? 'bg-amber-500 border-amber-500 text-white' 
+                                : 'bg-white border-slate-200 text-slate-300 hover:border-amber-400'
+                            }`}
+                            onClick={() => toggleScore(row.id, 'O', 'O')}
+                          >
+                            {getScore(row.id, 'O', 'O') === '1' ? <Check className="w-3 h-3" /> : <Minus className="w-2 h-2" />}
+                          </button>
+                        </div>
+                      </td>
+                      {row.cols.map((col, colIdx) => {
+                        const score = getScore(row.id, colIdx, col);
+                        const isOne = score === '1';
+                        const isZero = score === '0';
+                        const isN = score === 'N';
+                        const isDisabled = col === '-' || isNA;
+
+                        return (
+                          <td key={colIdx} className="px-1 py-2">
+                            <div className="flex justify-center">
+                              <button 
+                                className={`w-6 h-6 rounded-md border flex items-center justify-center text-[10px] font-bold transition-all active:scale-90 ${
+                                  isDisabled 
+                                    ? 'bg-slate-200 border-slate-200 text-slate-400 cursor-not-allowed' 
+                                    : isOne 
+                                      ? 'bg-emerald-500 border-emerald-500 text-white' 
+                                      : isZero
+                                        ? 'bg-red-500 border-red-500 text-white'
+                                        : isN
+                                          ? 'bg-slate-400 border-slate-400 text-white'
+                                          : 'bg-white border-slate-200 text-slate-400 hover:border-emerald-300'
+                                }`}
+                                onClick={() => toggleScore(row.id, colIdx, col)}
+                                onMouseEnter={() => !isDisabled && ipdCriteria[row.id]?.[colIdx] ? setHoveredCriteria(ipdCriteria[row.id][colIdx]) : null}
+                                onMouseLeave={() => setHoveredCriteria(null)}
+                                disabled={isDisabled}
+                                title={reasons[`${row.id}_${colIdx}`] ? `เหตุผล: ${reasons[`${row.id}_${colIdx}`]}` : ''}
+                              >
+                                {isNA ? '-' : score}
+                                {isZero && reasons[`${row.id}_${colIdx}`] && (
+                                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border border-white" />
+                                )}
+                              </button>
+                            </div>
+                          </td>
+                        );
+                      })}
+                      <td className="px-2 py-2">
+                        <input type="text" disabled={isNA} className="w-10 text-center bg-white border border-slate-200 rounded py-0.5 text-xs font-bold text-red-600 disabled:bg-slate-100 disabled:text-slate-400" defaultValue="0" />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Actions - Compact */}
+          <div className="flex justify-center gap-3">
+            <button 
+              onClick={handleSave} 
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-2 rounded-xl font-bold shadow-md transition-all active:scale-95 flex items-center text-sm"
+            >
+              <Save className="w-4 h-4 mr-2" />
+              บันทึกข้อมูล
+            </button>
+            <button 
+              onClick={() => navigate(-1)} 
+              className="bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 px-8 py-2 rounded-xl font-bold shadow-sm transition-all active:scale-95 flex items-center text-sm"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              กลับ
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
