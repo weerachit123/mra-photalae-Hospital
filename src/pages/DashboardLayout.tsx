@@ -1,6 +1,6 @@
 import React from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
-import { LogOut, FileText, Home, Users, Settings, LayoutDashboard, ClipboardCheck, ClipboardList } from 'lucide-react';
+import { LogOut, FileText, Home, Users, Settings, LayoutDashboard, ClipboardCheck, ClipboardList, Printer, BookOpen } from 'lucide-react';
 
 export default function DashboardLayout() {
   const navigate = useNavigate();
@@ -24,11 +24,13 @@ export default function DashboardLayout() {
     { path: '/dashboard/stats', label: 'Dashboard สรุปผล', icon: LayoutDashboard },
     { path: '/dashboard/report', label: 'รายงานละเอียด', icon: FileText },
     { path: '/dashboard/worksheets', label: 'รายการใบงาน', icon: ClipboardList },
+    { path: '/dashboard/audit-opd', label: 'Audit OPD (สร้างใบงาน)', icon: ClipboardCheck },
+    { path: '/dashboard/audit-ipd', label: 'Audit IPD (สร้างใบงาน)', icon: ClipboardCheck },
+    { path: '/dashboard/manual', label: 'คู่มือการใช้งาน', icon: BookOpen },
   ];
 
   const adminItems = [
-    { path: '/dashboard/audit-opd', label: 'Audit OPD', icon: ClipboardCheck },
-    { path: '/dashboard/audit-ipd', label: 'Audit IPD', icon: ClipboardCheck },
+    { path: '/dashboard/memorandum', label: 'ปริ้นสรุป เสนอเซ็น', icon: Printer },
     { path: '/dashboard/edit-criteria', label: 'ตั้งค่าเกณฑ์ประเมิน', icon: Settings },
   ];
 
@@ -52,7 +54,7 @@ export default function DashboardLayout() {
                   <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
                 </div>
                 <div className="ml-3 flex flex-col">
-                  <span className="text-lg font-bold tracking-tight text-slate-800 leading-none">MRA PRO</span>
+                  <span className="text-lg font-bold tracking-tight text-slate-800 leading-none">MRA Photalae Hospital</span>
                   <span className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">Medical Audit System</span>
                 </div>
               </Link>

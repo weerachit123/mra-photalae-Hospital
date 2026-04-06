@@ -125,7 +125,35 @@ export default function AuditFormIPD() {
 
   useEffect(() => {
     setIpdCriteria(getIPDCriteria());
-  }, []);
+
+    // Fetch current worksheet state from API
+    const fetchWorksheet = async () => {
+      const searchParams = new URLSearchParams(location.search);
+      const wsId = searchParams.get('wsId');
+      if (!wsId) return;
+
+      try {
+        const response = await fetch(`/api/mra/worksheets/${wsId}`);
+        const data = await response.json();
+        if (data.success) {
+          const currentCase = data.data.cases.find((c: any) => c.an === an);
+          if (currentCase && currentCase.status === 'audited') {
+            if (currentCase.scores) setScores(currentCase.scores);
+            if (currentCase.reasons) setCaseReasons(currentCase.reasons);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch worksheet for audit:', error);
+        // Fallback to location state if API fails
+        if (caseData) {
+          if (caseData.scores) setScores(caseData.scores);
+          if (caseData.reasons) setCaseReasons(caseData.reasons);
+        }
+      }
+    };
+
+    fetchWorksheet();
+  }, [an, location.search]);
 
   const toggleScore = (rowId: string, colIdx: number | string, defaultVal: string) => {
     if (defaultVal === '-') return; // Disabled
@@ -162,11 +190,36 @@ export default function AuditFormIPD() {
     return scores[`${rowId}_${colIdx}`] || defaultVal;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const searchParams = new URLSearchParams(location.search);
     const wsId = searchParams.get('wsId');
 
-    if (wsId) {
+    if (!wsId) return;
+
+    const auditData = {
+      hn: caseData.hn,
+      an,
+      status: 'audited',
+      scores,
+      reasons
+    };
+
+    try {
+      const response = await fetch(`/api/mra/worksheets/${wsId}/audit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(auditData)
+      });
+      const data = await response.json();
+      if (data.success) {
+        alert('บันทึกข้อมูลเรียบร้อยแล้ว');
+        navigate(-1);
+      } else {
+        throw new Error(data.message);
+      }
+    } catch (error) {
+      console.error('Failed to save audit to DB:', error);
+      // Fallback to localStorage
       const saved = localStorage.getItem('mra_worksheets');
       if (saved) {
         const worksheets = JSON.parse(saved);
@@ -181,10 +234,9 @@ export default function AuditFormIPD() {
           }
         }
       }
+      alert('บันทึกข้อมูลเรียบร้อยแล้ว (บันทึกในเครื่อง)');
+      navigate(-1);
     }
-
-    alert('บันทึกข้อมูลเรียบร้อยแล้ว');
-    navigate(-1);
   };
 
   return (

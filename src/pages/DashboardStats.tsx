@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 // Define criteria for OPD and IPD
 const OPD_CRITERIA = [
@@ -66,26 +66,39 @@ export default function DashboardStats() {
   const [reportType, setReportType] = useState<'OPD' | 'IPD'>('OPD');
 
   useEffect(() => {
-    const saved = localStorage.getItem('mra_worksheets');
-    if (saved) {
-      setWorksheets(JSON.parse(saved));
-    }
+    const fetchWorksheets = async () => {
+      try {
+        const response = await fetch('/api/mra/worksheets');
+        const data = await response.json();
+        if (data.success) {
+          setWorksheets(data.data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch worksheets for stats:', error);
+        // Fallback to localStorage
+        const saved = localStorage.getItem('mra_worksheets');
+        if (saved) {
+          setWorksheets(JSON.parse(saved));
+        }
+      }
+    };
+    fetchWorksheets();
   }, []);
 
   const rounds = useMemo(() => {
-    const uniqueRounds = Array.from(new Set(worksheets.map(w => w.name)));
+    const uniqueRounds = Array.from(new Set(worksheets.map(w => w.name || 'Unknown')));
     return uniqueRounds.sort();
   }, [worksheets]);
 
   const departments = useMemo(() => {
-    const uniqueDepts = Array.from(new Set(worksheets.map(w => w.department)));
+    const uniqueDepts = Array.from(new Set(worksheets.map(w => w.department || 'Unknown')));
     return uniqueDepts.sort();
   }, [worksheets]);
 
   const filteredWorksheets = useMemo(() => {
     return worksheets.filter(w => {
-      const matchRound = selectedRound === 'all' || w.name === selectedRound;
-      const matchDept = selectedDept === 'all' || w.department === selectedDept;
+      const matchRound = selectedRound === 'all' || (w.name || 'Unknown') === selectedRound;
+      const matchDept = selectedDept === 'all' || (w.department || 'Unknown') === selectedDept;
       return matchRound && matchDept;
     });
   }, [worksheets, selectedRound, selectedDept]);
@@ -200,46 +213,56 @@ export default function DashboardStats() {
   };
 
   const handleExcel = () => {
-    const criteria = reportType === 'OPD' ? OPD_CRITERIA : IPD_CRITERIA;
-    const data = matrixData.map(row => {
-      const exportRow: any = { 'แผนก/วอร์ด': row.department };
-      criteria.forEach(c => {
-        exportRow[c.name] = row[c.id] !== null ? `${row[c.id].toFixed(1)}%` : '-';
+    try {
+      const criteria = reportType === 'OPD' ? OPD_CRITERIA : IPD_CRITERIA;
+      const data = matrixData.map(row => {
+        const exportRow: any = { 'แผนก/วอร์ด': row.department || 'Unknown' };
+        criteria.forEach(c => {
+          exportRow[c.name] = row[c.id] !== null ? `${row[c.id].toFixed(1)}%` : '-';
+        });
+        return exportRow;
       });
-      return exportRow;
-    });
 
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, `Report ${reportType}`);
-    XLSX.writeFile(wb, `MRA_Report_${reportType}_${new Date().toISOString().split('T')[0]}.xlsx`);
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, `Report ${reportType}`);
+      XLSX.writeFile(wb, `MRA_Report_${reportType}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } catch (error) {
+      console.error('Excel export failed:', error);
+      alert('เกิดข้อผิดพลาดในการส่งออก Excel: ' + (error as Error).message);
+    }
   };
 
   const handlePDF = () => {
-    const doc = new jsPDF('l', 'mm', 'a4');
-    const criteria = reportType === 'OPD' ? OPD_CRITERIA : IPD_CRITERIA;
-    
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Medical Record Audit Summary Report (${reportType})`, 14, 15);
-    doc.setFontSize(10);
-    doc.text(`Round: ${selectedRound} | Department: ${selectedDept}`, 14, 22);
+    try {
+      const doc = new jsPDF('l', 'mm', 'a4');
+      const criteria = reportType === 'OPD' ? OPD_CRITERIA : IPD_CRITERIA;
+      
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Medical Record Audit Summary Report (${reportType})`, 14, 15);
+      doc.setFontSize(10);
+      doc.text(`Round: ${selectedRound} | Department: ${selectedDept}`, 14, 22);
 
-    const headers = ['Department', ...criteria.map(c => c.name)];
-    const body = matrixData.map(row => [
-      row.department,
-      ...criteria.map(c => row[c.id] !== null ? `${row[c.id].toFixed(1)}%` : '-')
-    ]);
+      const headers = ['Department', ...criteria.map(c => c.name)];
+      const body = matrixData.map(row => [
+        row.department || 'Unknown',
+        ...criteria.map(c => row[c.id] !== null ? `${row[c.id].toFixed(1)}%` : '-')
+      ]);
 
-    (doc as any).autoTable({
-      startY: 30,
-      head: [headers],
-      body: body,
-      theme: 'grid',
-      styles: { fontSize: 7, cellPadding: 2 },
-      headStyles: { fillColor: [59, 130, 246] }
-    });
+      autoTable(doc, {
+        startY: 30,
+        head: [headers],
+        body: body,
+        theme: 'grid',
+        styles: { fontSize: 7, cellPadding: 2 },
+        headStyles: { fillColor: [59, 130, 246] }
+      });
 
-    doc.save(`MRA_Report_${reportType}_${new Date().toISOString().split('T')[0]}.pdf`);
+      doc.save(`MRA_Report_${reportType}_${new Date().toISOString().split('T')[0]}.pdf`);
+    } catch (error) {
+      console.error('PDF export failed:', error);
+      alert('เกิดข้อผิดพลาดในการส่งออก PDF: ' + (error as Error).message);
+    }
   };
 
   return (

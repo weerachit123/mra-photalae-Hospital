@@ -10,6 +10,8 @@ import WorksheetList from './pages/WorksheetList';
 import WorksheetDetail from './pages/WorksheetDetail';
 import DashboardStats from './pages/DashboardStats';
 import DetailedReport from './pages/DetailedReport';
+import MemorandumReport from './pages/MemorandumReport';
+import UserManual from './pages/UserManual';
 
 import EditCriteria from './pages/EditCriteria';
 
@@ -20,7 +22,7 @@ function DashboardHome() {
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center">
-      <h2 className="text-2xl font-bold text-gray-800 mb-4">ยินดีต้อนรับเข้าสู่ระบบ MRA PRO</h2>
+      <h2 className="text-2xl font-bold text-gray-800 mb-4">ยินดีต้อนรับเข้าสู่ระบบ MRA Photalae Hospital</h2>
       <p className="text-gray-600">
         คุณเข้าสู่ระบบในชื่อ: <span className="font-semibold">{user?.name}</span>
       </p>
@@ -40,6 +42,7 @@ export default function App() {
           <Route index element={<Navigate to="/dashboard/stats" replace />} />
           <Route path="stats" element={<DashboardStats />} />
           <Route path="report" element={<DetailedReport />} />
+          <Route path="memorandum" element={<MemorandumReport />} />
           <Route path="worksheets" element={<WorksheetList />} />
           <Route path="worksheets/:id" element={<WorksheetDetail />} />
           <Route path="audit-opd" element={<AuditOPD />} />
@@ -47,7 +50,9 @@ export default function App() {
           <Route path="audit-ipd" element={<AuditIPD />} />
           <Route path="audit-ipd/form/:an" element={<AuditFormIPD />} />
           <Route path="edit-criteria" element={<EditCriteria />} />
+          <Route path="manual" element={<UserManual />} />
         </Route>
+        <Route path="/manual" element={<UserManual />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>

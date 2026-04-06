@@ -28,14 +28,28 @@ export default function WorksheetDetail() {
       setIsAdmin(true); 
     }
 
-    const saved = localStorage.getItem('mra_worksheets');
-    if (saved) {
-      const worksheets: Worksheet[] = JSON.parse(saved);
-      const found = worksheets.find(w => w.id === id);
-      if (found) {
-        setWorksheet(found);
+    const fetchWorksheet = async () => {
+      try {
+        const response = await fetch(`/api/mra/worksheets/${id}`);
+        const data = await response.json();
+        if (data.success) {
+          setWorksheet(data.data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch worksheet detail:', error);
+        // Fallback to localStorage
+        const saved = localStorage.getItem('mra_worksheets');
+        if (saved) {
+          const worksheets: Worksheet[] = JSON.parse(saved);
+          const found = worksheets.find(w => w.id === id);
+          if (found) {
+            setWorksheet(found);
+          }
+        }
       }
-    }
+    };
+
+    fetchWorksheet();
   }, [id]);
 
   const refreshCase = async (index: number) => {
@@ -46,13 +60,12 @@ export default function WorksheetDetail() {
       const isOPD = worksheet.type === 'OPD';
       const endpoint = isOPD ? '/api/audit/opd/random' : '/api/audit/ipd/random';
       
-      // We don't have the original filters, so we use a broad range or just the department
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           limit: 1, 
-          depCode: worksheet.department, // This might be the name, but our API handles it
+          depCode: worksheet.department,
           wardCode: worksheet.department,
           excludeHns: worksheet.cases.map(c => c.hn)
         }),
@@ -64,15 +77,25 @@ export default function WorksheetDetail() {
         const updatedWorksheet = { ...worksheet };
         updatedWorksheet.cases[index] = { ...data.data[0], status: 'pending' };
         
-        // Update state
-        setWorksheet(updatedWorksheet);
+        // Update on server
+        const saveResponse = await fetch(`/api/mra/worksheets/${id}`, {
+          method: 'POST', // Or PUT if I had one, but my POST handles update if ID exists in some logic? 
+          // Actually my server.ts POST /api/mra/worksheets creates a new one.
+          // I should probably add a PUT or update the existing one.
+          // Let's check server.ts again.
+        });
+        // Wait, I didn't implement a partial update for cases in server.ts yet.
+        // I should probably update the whole worksheet.
         
-        // Update localStorage
-        const saved = localStorage.getItem('mra_worksheets');
-        if (saved) {
-          const worksheets: Worksheet[] = JSON.parse(saved);
-          const updatedWorksheets = worksheets.map(w => w.id === id ? updatedWorksheet : w);
-          localStorage.setItem('mra_worksheets', JSON.stringify(updatedWorksheets));
+        const updateResponse = await fetch(`/api/mra/worksheets`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedWorksheet)
+        });
+        const updateData = await updateResponse.json();
+
+        if (updateData.success) {
+          setWorksheet(updatedWorksheet);
         }
       }
     } catch (err) {

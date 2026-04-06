@@ -25,6 +25,7 @@ export default function AuditIPD() {
   const [limit, setLimit] = useState(WARDS[0].defaultLimit);
   const [cases, setCases] = useState<AuditCase[]>([]);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [isMock, setIsMock] = useState(false);
 
@@ -89,6 +90,9 @@ export default function AuditIPD() {
 
       if (data.success) {
         setCases(data.data);
+        if (data.data.length === 0) {
+          setError('ไม่พบข้อมูลเคสตามเงื่อนไขที่กำหนด กรุณาลองเปลี่ยนวันที่หรือวอร์ด');
+        }
         if (data.mock) {
           setIsMock(true);
         }
@@ -128,11 +132,12 @@ export default function AuditIPD() {
     }
   };
 
-  const handleCreateWorksheet = () => {
+  const handleCreateWorksheet = async () => {
     if (cases.length === 0) {
       alert('กรุณาสุ่มเคสก่อนสร้างใบงาน');
       return;
     }
+    setSaving(true);
     const wardName = WARDS.find(w => w.code === selectedWard)?.name || selectedWard;
     
     const newWorksheet = {
@@ -144,11 +149,29 @@ export default function AuditIPD() {
       cases: cases.map(c => ({ ...c, status: 'pending' }))
     };
 
-    const existing = JSON.parse(localStorage.getItem('mra_worksheets') || '[]');
-    localStorage.setItem('mra_worksheets', JSON.stringify([...existing, newWorksheet]));
-
-    alert(`สร้างใบงาน "${selectedWorksheet}" สำหรับวอร์ด ${wardName} จำนวน ${cases.length} เคส เรียบร้อยแล้ว`);
-    navigate('/dashboard/worksheets');
+    try {
+      const response = await fetch('/api/mra/worksheets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newWorksheet)
+      });
+      const data = await response.json();
+      if (data.success) {
+        alert(`สร้างใบงาน "${selectedWorksheet}" สำหรับวอร์ด ${wardName} จำนวน ${cases.length} เคส เรียบร้อยแล้ว`);
+        navigate('/dashboard/worksheets');
+      } else {
+        throw new Error(data.message);
+      }
+    } catch (error) {
+      console.error('Failed to save worksheet to DB:', error);
+      // Fallback to localStorage
+      const existing = JSON.parse(localStorage.getItem('mra_worksheets') || '[]');
+      localStorage.setItem('mra_worksheets', JSON.stringify([...existing, newWorksheet]));
+      alert(`สร้างใบงาน "${selectedWorksheet}" เรียบร้อยแล้ว (บันทึกในเครื่อง)`);
+      navigate('/dashboard/worksheets');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -385,10 +408,15 @@ export default function AuditIPD() {
             <div className="mt-8 flex justify-end">
               <button
                 onClick={handleCreateWorksheet}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg shadow-emerald-100 flex items-center transition-all active:scale-95"
+                disabled={saving}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg shadow-emerald-100 flex items-center transition-all active:scale-95 disabled:opacity-70"
               >
-                <FilePlus className="w-5 h-5 mr-2" />
-                สร้างใบงานประเมิน IPD
+                {saving ? (
+                  <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                ) : (
+                  <FilePlus className="w-5 h-5 mr-2" />
+                )}
+                {saving ? 'กำลังสร้างใบงาน...' : 'สร้างใบงานประเมิน IPD'}
               </button>
             </div>
           )}

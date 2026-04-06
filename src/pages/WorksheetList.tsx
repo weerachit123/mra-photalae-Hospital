@@ -16,21 +16,43 @@ export default function WorksheetList() {
   const [activeTab, setActiveTab] = useState<'ALL' | 'OPD' | 'IPD'>('ALL');
 
   useEffect(() => {
-    const saved = localStorage.getItem('mra_worksheets');
-    if (saved) {
-      // Sort by newest first
-      const parsed = JSON.parse(saved);
-      parsed.sort((a: Worksheet, b: Worksheet) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      setWorksheets(parsed);
-    }
+    const fetchWorksheets = async () => {
+      try {
+        const response = await fetch('/api/mra/worksheets');
+        const data = await response.json();
+        if (data.success) {
+          setWorksheets(data.data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch worksheets:', error);
+        // Fallback to localStorage if API fails
+        const saved = localStorage.getItem('mra_worksheets');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          parsed.sort((a: Worksheet, b: Worksheet) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          setWorksheets(parsed);
+        }
+      }
+    };
+    fetchWorksheets();
   }, []);
 
-  const handleDelete = (id: string, e: React.MouseEvent) => {
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.preventDefault();
     if (window.confirm('คุณต้องการลบใบงานนี้ใช่หรือไม่? ข้อมูลการประเมินในใบงานนี้จะหายไปทั้งหมด')) {
-      const updated = worksheets.filter(w => w.id !== id);
-      setWorksheets(updated);
-      localStorage.setItem('mra_worksheets', JSON.stringify(updated));
+      try {
+        const response = await fetch(`/api/mra/worksheets/${id}`, { method: 'DELETE' });
+        const data = await response.json();
+        if (data.success) {
+          setWorksheets(prev => prev.filter(w => w.id !== id));
+        }
+      } catch (error) {
+        console.error('Failed to delete worksheet:', error);
+        // Fallback to localStorage
+        const updated = worksheets.filter(w => w.id !== id);
+        setWorksheets(updated);
+        localStorage.setItem('mra_worksheets', JSON.stringify(updated));
+      }
     }
   };
 
@@ -61,6 +83,23 @@ export default function WorksheetList() {
             <p className="mt-1 text-sm text-slate-500 font-medium">
               เลือกใบงานที่ต้องการเพื่อเริ่มทำการประเมินเวชระเบียน
             </p>
+          </div>
+          
+          <div className="flex flex-wrap gap-4">
+            <Link 
+              to="/dashboard/audit-opd"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md shadow-blue-100 transition-all active:scale-95 flex items-center gap-2"
+            >
+              <FileText className="w-4 h-4" />
+              สร้างใบงาน OPD
+            </Link>
+            <Link 
+              to="/dashboard/audit-ipd"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md shadow-emerald-100 transition-all active:scale-95 flex items-center gap-2"
+            >
+              <FileText className="w-4 h-4" />
+              สร้างใบงาน IPD
+            </Link>
           </div>
           
           <div className="flex bg-slate-100 p-1.5 rounded-xl border border-slate-200">

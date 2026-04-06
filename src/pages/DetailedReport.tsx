@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 // Criteria Definitions (must match audit forms)
 const OPD_ROWS = [
@@ -59,27 +59,40 @@ export default function DetailedReport() {
   const [reportType, setReportType] = useState<'OPD' | 'IPD'>('OPD');
 
   useEffect(() => {
-    const saved = localStorage.getItem('mra_worksheets');
-    if (saved) {
-      setWorksheets(JSON.parse(saved));
-    }
+    const fetchWorksheets = async () => {
+      try {
+        const response = await fetch('/api/mra/worksheets');
+        const data = await response.json();
+        if (data.success) {
+          setWorksheets(data.data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch worksheets for detailed report:', error);
+        // Fallback to localStorage
+        const saved = localStorage.getItem('mra_worksheets');
+        if (saved) {
+          setWorksheets(JSON.parse(saved));
+        }
+      }
+    };
+    fetchWorksheets();
   }, []);
 
   const rounds = useMemo(() => {
-    const uniqueRounds = Array.from(new Set(worksheets.map(w => w.name)));
+    const uniqueRounds = Array.from(new Set(worksheets.map(w => w.name || 'Unknown')));
     return uniqueRounds.sort();
   }, [worksheets]);
 
   const filteredWorksheets = useMemo(() => {
     return worksheets.filter(w => {
-      const matchRound = selectedRound === 'all' || w.name === selectedRound;
+      const matchRound = selectedRound === 'all' || (w.name || 'Unknown') === selectedRound;
       const matchType = w.type === reportType;
       return matchRound && matchType;
     });
   }, [worksheets, selectedRound, reportType]);
 
   const departments = useMemo(() => {
-    const uniqueDepts = Array.from(new Set(filteredWorksheets.map(w => w.department)));
+    const uniqueDepts = Array.from(new Set(filteredWorksheets.map(w => w.department || 'Unknown')));
     return uniqueDepts.sort();
   }, [filteredWorksheets]);
 
@@ -131,78 +144,100 @@ export default function DetailedReport() {
   const handlePrint = () => window.print();
 
   const handleExcel = () => {
-    const rows = reportType === 'OPD' ? OPD_ROWS : IPD_ROWS;
-    const wb = XLSX.utils.book_new();
+    try {
+      const rows = reportType === 'OPD' ? OPD_ROWS : IPD_ROWS;
+      const wb = XLSX.utils.book_new();
 
-    // Overall Sheet
-    const overallData = rows.map(r => {
-      const row: any = { 'หัวข้อการประเมิน': r.name };
-      for (let i = 0; i < r.cols; i++) {
-        row[`ข้อ ${i + 1}`] = overallMatrix.counts[r.id][i];
-      }
-      const earned = overallMatrix.counts[r.id].reduce((a, b) => a + b, 0);
-      const total = overallMatrix.totals[r.id].reduce((a, b) => a + b, 0);
-      row['คะแนนเต็ม'] = total;
-      row['คะแนนที่ได้'] = earned;
-      row['ร้อยละ'] = total > 0 ? ((earned / total) * 100).toFixed(2) : '0.00';
-      return row;
-    });
-    const wsOverall = XLSX.utils.json_to_sheet(overallData);
-    XLSX.utils.book_append_sheet(wb, wsOverall, 'ภาพรวม');
-
-    // Dept Sheets
-    departments.forEach(dept => {
-      const m = deptMatrices[dept];
-      const deptData = rows.map(r => {
+      // Overall Sheet
+      const overallData = rows.map(r => {
         const row: any = { 'หัวข้อการประเมิน': r.name };
         for (let i = 0; i < r.cols; i++) {
-          row[`ข้อ ${i + 1}`] = m.counts[r.id][i];
+          row[`ข้อ ${i + 1}`] = overallMatrix.counts[r.id][i];
         }
-        const earned = m.counts[r.id].reduce((a, b) => a + b, 0);
-        const total = m.totals[r.id].reduce((a, b) => a + b, 0);
+        const earned = overallMatrix.counts[r.id].reduce((a, b) => a + b, 0);
+        const total = overallMatrix.totals[r.id].reduce((a, b) => a + b, 0);
         row['คะแนนเต็ม'] = total;
         row['คะแนนที่ได้'] = earned;
         row['ร้อยละ'] = total > 0 ? ((earned / total) * 100).toFixed(2) : '0.00';
         return row;
       });
-      const wsDept = XLSX.utils.json_to_sheet(deptData);
-      XLSX.utils.book_append_sheet(wb, wsDept, dept);
-    });
+      const wsOverall = XLSX.utils.json_to_sheet(overallData);
+      XLSX.utils.book_append_sheet(wb, wsOverall, 'ภาพรวม');
 
-    XLSX.writeFile(wb, `MRA_Detailed_Report_${reportType}_${new Date().toISOString().split('T')[0]}.xlsx`);
+      // Dept Sheets
+      departments.forEach((dept, index) => {
+        const m = deptMatrices[dept];
+        if (!m) return;
+        const deptData = rows.map(r => {
+          const row: any = { 'หัวข้อการประเมิน': r.name };
+          for (let i = 0; i < r.cols; i++) {
+            row[`ข้อ ${i + 1}`] = m.counts[r.id][i];
+          }
+          const earned = m.counts[r.id].reduce((a, b) => a + b, 0);
+          const total = m.totals[r.id].reduce((a, b) => a + b, 0);
+          row['คะแนนเต็ม'] = total;
+          row['คะแนนที่ได้'] = earned;
+          row['ร้อยละ'] = total > 0 ? ((earned / total) * 100).toFixed(2) : '0.00';
+          return row;
+        });
+        const wsDept = XLSX.utils.json_to_sheet(deptData);
+        let safeDeptName = (dept || 'Unknown').substring(0, 31).replace(/[\\/?*[\]]/g, '');
+        if (!safeDeptName) safeDeptName = `Dept_${index}`;
+        
+        // Ensure unique sheet name
+        let finalName = safeDeptName;
+        let counter = 1;
+        while (wb.SheetNames.includes(finalName)) {
+          finalName = `${safeDeptName.substring(0, 28)}_${counter}`;
+          counter++;
+        }
+        
+        XLSX.utils.book_append_sheet(wb, wsDept, finalName);
+      });
+
+      XLSX.writeFile(wb, `MRA_Detailed_Report_${reportType}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } catch (error) {
+      console.error('Excel export failed:', error);
+      alert('เกิดข้อผิดพลาดในการส่งออก Excel: ' + (error as Error).message);
+    }
   };
 
   const handlePDF = () => {
-    const doc = new jsPDF('l', 'mm', 'a4');
-    const rows = reportType === 'OPD' ? OPD_ROWS : IPD_ROWS;
-    
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Medical Record Audit Detailed Report (${reportType})`, 14, 15);
-    doc.setFontSize(10);
-    doc.text(`Round: ${selectedRound}`, 14, 22);
+    try {
+      const doc = new jsPDF('l', 'mm', 'a4');
+      const rows = reportType === 'OPD' ? OPD_ROWS : IPD_ROWS;
+      
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Medical Record Audit Detailed Report (${reportType})`, 14, 15);
+      doc.setFontSize(10);
+      doc.text(`Round: ${selectedRound}`, 14, 22);
 
-    const headers = ['Criteria', ...Array.from({ length: overallMatrix.maxCols }, (_, i) => `Item ${i + 1}`), 'Full', 'Earned', '%'];
-    const body = rows.map(r => [
-      r.name,
-      ...overallMatrix.counts[r.id].map(v => v.toString()),
-      ...new Array(overallMatrix.maxCols - r.cols).fill('-'),
-      overallMatrix.totals[r.id].reduce((a, b) => a + b, 0).toString(),
-      overallMatrix.counts[r.id].reduce((a, b) => a + b, 0).toString(),
-      (overallMatrix.totals[r.id].reduce((a, b) => a + b, 0) > 0 
-        ? (overallMatrix.counts[r.id].reduce((a, b) => a + b, 0) / overallMatrix.totals[r.id].reduce((a, b) => a + b, 0) * 100).toFixed(1) 
-        : '0.0') + '%'
-    ]);
+      const headers = ['Criteria', ...Array.from({ length: overallMatrix.maxCols }, (_, i) => `Item ${i + 1}`), 'Full', 'Earned', '%'];
+      const body = rows.map(r => [
+        r.name,
+        ...overallMatrix.counts[r.id].map(v => v.toString()),
+        ...new Array(overallMatrix.maxCols - r.cols).fill('-'),
+        overallMatrix.totals[r.id].reduce((a, b) => a + b, 0).toString(),
+        overallMatrix.counts[r.id].reduce((a, b) => a + b, 0).toString(),
+        (overallMatrix.totals[r.id].reduce((a, b) => a + b, 0) > 0 
+          ? (overallMatrix.counts[r.id].reduce((a, b) => a + b, 0) / overallMatrix.totals[r.id].reduce((a, b) => a + b, 0) * 100).toFixed(1) 
+          : '0.0') + '%'
+      ]);
 
-    (doc as any).autoTable({
-      startY: 30,
-      head: [headers],
-      body: body,
-      theme: 'grid',
-      styles: { fontSize: 7, cellPadding: 2 },
-      headStyles: { fillColor: [59, 130, 246] }
-    });
+      autoTable(doc, {
+        startY: 30,
+        head: [headers],
+        body: body,
+        theme: 'grid',
+        styles: { fontSize: 7, cellPadding: 2 },
+        headStyles: { fillColor: [59, 130, 246] }
+      });
 
-    doc.save(`MRA_Detailed_Report_${reportType}_${new Date().toISOString().split('T')[0]}.pdf`);
+      doc.save(`MRA_Detailed_Report_${reportType}_${new Date().toISOString().split('T')[0]}.pdf`);
+    } catch (error) {
+      console.error('PDF export failed:', error);
+      alert('เกิดข้อผิดพลาดในการส่งออก PDF: ' + (error as Error).message);
+    }
   };
 
   const renderMatrixTable = (title: string, matrix: any, subTitle?: string) => {

@@ -1,13 +1,35 @@
-import React, { useState } from 'react';
-import { User, Lock, ArrowRight, Activity } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { User, Lock, ArrowRight, Activity, Database, X, Save, Server, BookOpen } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
 
 export default function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showDbSettings, setShowDbSettings] = useState(false);
+  const [dbConfig, setDbConfig] = useState({
+    host: '',
+    user: 'root',
+    password: '',
+    database: 'hos',
+    port: '3306'
+  });
+
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const savedConfig = localStorage.getItem('mra_db_config');
+    if (savedConfig) {
+      setDbConfig(JSON.parse(savedConfig));
+    }
+  }, []);
+
+  const handleSaveDbConfig = () => {
+    localStorage.setItem('mra_db_config', JSON.stringify(dbConfig));
+    setShowDbSettings(false);
+    alert('บันทึกการตั้งค่าฐานข้อมูลเรียบร้อยแล้ว');
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,13 +85,13 @@ export default function Login() {
             />
           </div>
           <h1 className="text-3xl font-black text-slate-800 tracking-tight mb-2 flex items-center gap-2">
-            MRA <span className="text-blue-600">PRO</span>
+            MRA <span className="text-blue-600">Photalae Hospital</span>
           </h1>
           <p className="text-sm font-medium text-slate-500 tracking-wide uppercase">Medical Record Audit System</p>
         </div>
 
         {/* Login Card */}
-        <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 p-8 sm:p-10">
+        <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 p-8 sm:p-10 relative">
           <form onSubmit={handleLogin} className="space-y-6">
             
             {error && (
@@ -131,6 +153,15 @@ export default function Login() {
               )}
             </button>
           </form>
+
+          {/* Database Settings Trigger */}
+          <button 
+            onClick={() => setShowDbSettings(true)}
+            className="absolute top-4 right-4 p-2 text-slate-300 hover:text-blue-500 transition-colors"
+            title="Database Settings"
+          >
+            <Database className="w-5 h-5" />
+          </button>
         </div>
 
         {/* Footer */}
@@ -141,6 +172,109 @@ export default function Login() {
           </p>
         </div>
       </div>
+
+      {/* Database Settings Modal */}
+      {showDbSettings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                <Server className="w-5 h-5 text-blue-500" />
+                ตั้งค่าการเชื่อมต่อฐานข้อมูล
+              </h3>
+              <button onClick={() => setShowDbSettings(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-1 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Database Host</label>
+                  <input
+                    type="text"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium text-sm"
+                    placeholder="e.g. 192.168.1.100"
+                    value={dbConfig.host}
+                    onChange={(e) => setDbConfig({...dbConfig, host: e.target.value})}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">DB User</label>
+                    <input
+                      type="text"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium text-sm"
+                      value={dbConfig.user}
+                      onChange={(e) => setDbConfig({...dbConfig, user: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">DB Port</label>
+                    <input
+                      type="text"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium text-sm"
+                      value={dbConfig.port}
+                      onChange={(e) => setDbConfig({...dbConfig, port: e.target.value})}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">DB Password</label>
+                  <input
+                    type="password"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium text-sm"
+                    value={dbConfig.password}
+                    onChange={(e) => setDbConfig({...dbConfig, password: e.target.value})}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Database Name</label>
+                  <input
+                    type="text"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium text-sm"
+                    value={dbConfig.database}
+                    onChange={(e) => setDbConfig({...dbConfig, database: e.target.value})}
+                  />
+                </div>
+              </div>
+              
+              <p className="text-[10px] text-slate-400 italic">
+                * การตั้งค่านี้จะถูกบันทึกไว้ในเบราว์เซอร์ของคุณ
+              </p>
+            </div>
+
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
+              <Link 
+                to="/manual" 
+                target="_blank"
+                className="flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                ดูคู่มือการใช้งาน
+              </Link>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setShowDbSettings(false)} 
+                  className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  onClick={handleSaveDbConfig}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl text-sm font-bold shadow-lg shadow-blue-100 transition-all active:scale-95 flex items-center gap-2"
+                >
+                  <Save className="w-4 h-4" />
+                  บันทึกการตั้งค่า
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { getOPDCriteria } from './EditCriteria';
 import { Save, ArrowLeft, Info, Check, X, Minus, MessageSquare, Plus } from 'lucide-react';
@@ -116,6 +116,9 @@ export default function AuditFormOPD() {
 
   const [scores, setScores] = useState<Record<string, string>>({});
   const [reasons, setCaseReasons] = useState<Record<string, string>>({});
+  const [remarks, setRemarks] = useState<Record<string, string>>({});
+  const [overallFinding, setOverallFinding] = useState<string>('');
+  const [overallFindingText, setOverallFindingText] = useState<string>('');
   const [hoveredCriteria, setHoveredCriteria] = useState<string | null>(null);
   const [opdCriteria, setOpdCriteria] = useState<Record<string, string[]>>({});
 
@@ -124,7 +127,41 @@ export default function AuditFormOPD() {
 
   useEffect(() => {
     setOpdCriteria(getOPDCriteria());
-  }, []);
+    
+    // Fetch current worksheet state from API
+    const fetchWorksheet = async () => {
+      const searchParams = new URLSearchParams(location.search);
+      const wsId = searchParams.get('wsId');
+      if (!wsId) return;
+
+      try {
+        const response = await fetch(`/api/mra/worksheets/${wsId}`);
+        const data = await response.json();
+        if (data.success) {
+          const currentCase = data.data.cases.find((c: any) => c.hn === hn);
+          if (currentCase && currentCase.status === 'audited') {
+            if (currentCase.scores) setScores(currentCase.scores);
+            if (currentCase.reasons) setCaseReasons(currentCase.reasons);
+            if (currentCase.remarks) setRemarks(currentCase.remarks);
+            if (currentCase.overallFinding) setOverallFinding(currentCase.overallFinding);
+            if (currentCase.overallFindingText) setOverallFindingText(currentCase.overallFindingText);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch worksheet for audit:', error);
+        // Fallback to location state if API fails
+        if (caseData) {
+          if (caseData.scores) setScores(caseData.scores);
+          if (caseData.reasons) setCaseReasons(caseData.reasons);
+          if (caseData.remarks) setRemarks(caseData.remarks);
+          if (caseData.overallFinding) setOverallFinding(caseData.overallFinding);
+          if (caseData.overallFindingText) setOverallFindingText(caseData.overallFindingText);
+        }
+      }
+    };
+
+    fetchWorksheet();
+  }, [hn, location.search]);
 
   const toggleScore = (rowId: string, colIdx: number | string, defaultVal: string) => {
     if (defaultVal === '-') return; // Disabled
@@ -161,11 +198,67 @@ export default function AuditFormOPD() {
     return scores[`${rowId}_${colIdx}`] || defaultVal;
   };
 
-  const handleSave = () => {
+  const { totalFull, totalEarned } = useMemo(() => {
+    let tf = 0;
+    let te = 0;
+    ROWS.forEach(row => {
+      const isNA = getScore(row.id, 'NA', 'N') === '1';
+      const isMiss = getScore(row.id, 'M', 'M') === '1';
+      if (!isNA) {
+        row.cols.forEach((col, colIdx) => {
+          if (col !== '-') {
+            const score = getScore(row.id, colIdx, col);
+            if (isMiss) {
+              tf += 1;
+            } else {
+              if (score === '1') {
+                tf += 1;
+                te += 1;
+              } else if (score === '0') {
+                tf += 1;
+              }
+            }
+          }
+        });
+      }
+    });
+    return { totalFull: tf, totalEarned: te };
+  }, [scores]);
+
+  const totalPct = totalFull > 0 ? ((totalEarned / totalFull) * 100).toFixed(2) : '0.00';
+
+  const handleSave = async () => {
     const searchParams = new URLSearchParams(location.search);
     const wsId = searchParams.get('wsId');
 
-    if (wsId) {
+    if (!wsId) return;
+
+    const auditData = {
+      hn,
+      status: 'audited',
+      scores,
+      reasons,
+      remarks,
+      overallFinding,
+      overallFindingText
+    };
+
+    try {
+      const response = await fetch(`/api/mra/worksheets/${wsId}/audit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(auditData)
+      });
+      const data = await response.json();
+      if (data.success) {
+        alert('บันทึกข้อมูลเรียบร้อยแล้ว');
+        navigate(-1);
+      } else {
+        throw new Error(data.message);
+      }
+    } catch (error) {
+      console.error('Failed to save audit to DB:', error);
+      // Fallback to localStorage
       const saved = localStorage.getItem('mra_worksheets');
       if (saved) {
         const worksheets = JSON.parse(saved);
@@ -176,14 +269,16 @@ export default function AuditFormOPD() {
             worksheets[wsIndex].cases[caseIndex].status = 'audited';
             worksheets[wsIndex].cases[caseIndex].scores = scores;
             worksheets[wsIndex].cases[caseIndex].reasons = reasons;
+            worksheets[wsIndex].cases[caseIndex].remarks = remarks;
+            worksheets[wsIndex].cases[caseIndex].overallFinding = overallFinding;
+            worksheets[wsIndex].cases[caseIndex].overallFindingText = overallFindingText;
             localStorage.setItem('mra_worksheets', JSON.stringify(worksheets));
           }
         }
       }
+      alert('บันทึกข้อมูลเรียบร้อยแล้ว (บันทึกในเครื่อง)');
+      navigate(-1);
     }
-    
-    alert('บันทึกข้อมูลเรียบร้อยแล้ว');
-    navigate(-1);
   };
 
   return (
@@ -267,19 +362,22 @@ export default function AuditFormOPD() {
           </div>
 
           {/* Audit Table - Compact */}
-          <div className="mb-4 overflow-hidden border border-slate-200 rounded-xl shadow-sm">
+          <div className="mb-4 overflow-hidden border border-pink-200 rounded-xl shadow-sm">
             <table className="w-full border-collapse text-center text-xs">
               <thead>
-                <tr className="bg-slate-900 text-white">
-                  <th className="px-2 py-2 font-bold uppercase tracking-tighter w-8">No</th>
-                  <th className="px-3 py-2 text-left font-bold uppercase tracking-tighter">Contents</th>
-                  <th className="px-1 py-2 font-bold uppercase tracking-tighter w-10">NA</th>
-                  <th className="px-1 py-2 font-bold uppercase tracking-tighter w-10">Miss</th>
+                <tr className="bg-[#e91e63] text-white">
+                  <th className="px-2 py-2 font-bold uppercase tracking-tighter w-8 border border-pink-700">No</th>
+                  <th className="px-3 py-2 text-left font-bold uppercase tracking-tighter border border-pink-700">Contents</th>
+                  <th className="px-1 py-2 font-bold uppercase tracking-tighter w-10 border border-pink-700">NA</th>
+                  <th className="px-1 py-2 font-bold uppercase tracking-tighter w-10 border border-pink-700">M</th>
                   {[1,2,3,4,5,6,7].map(i => (
-                    <th key={i} className="px-1 py-2 font-bold uppercase tracking-tighter w-10">{i}</th>
+                    <th key={i} className="px-1 py-2 font-bold uppercase tracking-tighter w-10 border border-pink-700">เกณฑ์<br/>ข้อ {i}</th>
                   ))}
-                  <th className="px-2 py-2 font-bold uppercase tracking-tighter w-12">เพิ่ม</th>
-                  <th className="px-2 py-2 font-bold uppercase tracking-tighter w-12">หัก</th>
+                  <th className="px-2 py-2 font-bold uppercase tracking-tighter w-12 border border-pink-700">เพิ่ม<br/>คะแนน</th>
+                  <th className="px-2 py-2 font-bold uppercase tracking-tighter w-12 border border-pink-700">หัก<br/>คะแนน</th>
+                  <th className="px-2 py-2 font-bold uppercase tracking-tighter w-12 border border-pink-700">คะแนน<br/>เต็ม</th>
+                  <th className="px-2 py-2 font-bold uppercase tracking-tighter w-12 border border-pink-700">คะแนน<br/>ที่ได้</th>
+                  <th className="px-2 py-2 font-bold uppercase tracking-tighter w-24 border border-pink-700">หมายเหตุ</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -287,17 +385,38 @@ export default function AuditFormOPD() {
                   const isNA = getScore(row.id, 'NA', 'N') === '1';
                   const isMiss = getScore(row.id, 'M', 'M') === '1';
                   
+                  let full = 0;
+                  let earned = 0;
+
+                  if (!isNA) {
+                    row.cols.forEach((col, colIdx) => {
+                      if (col !== '-') {
+                        const score = getScore(row.id, colIdx, col);
+                        if (isMiss) {
+                          full += 1;
+                        } else {
+                          if (score === '1') {
+                            full += 1;
+                            earned += 1;
+                          } else if (score === '0') {
+                            full += 1;
+                          }
+                        }
+                      }
+                    });
+                  }
+                  
                   let rowBgClass = 'bg-white';
                   if (isNA) rowBgClass = 'bg-slate-100';
                   else if (isMiss) rowBgClass = 'bg-red-50';
 
                   return (
                     <tr key={row.id} className={`group transition-colors ${rowBgClass} ${!isNA && !isMiss ? 'hover:bg-slate-50' : ''}`}>
-                      <td className="px-2 py-2 font-bold text-slate-400">{!row.isSub ? row.id : ''}</td>
-                      <td className={`px-3 py-2 text-left font-bold text-slate-700 ${row.isSub ? 'pl-6 text-slate-500 font-semibold italic' : ''}`}>
+                      <td className="px-2 py-2 font-bold text-slate-400 border border-slate-200">{!row.isSub ? row.id : ''}</td>
+                      <td className={`px-3 py-2 text-left font-bold text-slate-700 border border-slate-200 ${row.isSub ? 'pl-6 text-slate-500 font-semibold italic' : ''}`}>
                         {row.name}
                       </td>
-                      <td className="px-1 py-2">
+                      <td className="px-1 py-2 border border-slate-200">
                         <div className="flex justify-center">
                           <button 
                             className={`w-6 h-6 rounded-md border flex items-center justify-center transition-all active:scale-90 ${
@@ -311,7 +430,7 @@ export default function AuditFormOPD() {
                           </button>
                         </div>
                       </td>
-                      <td className="px-1 py-2">
+                      <td className="px-1 py-2 border border-slate-200">
                         <div className="flex justify-center">
                           <button 
                             className={`w-6 h-6 rounded-md border flex items-center justify-center transition-all active:scale-90 ${
@@ -330,49 +449,135 @@ export default function AuditFormOPD() {
                         const isOne = score === '1';
                         const isZero = score === '0';
                         const isN = score === 'N';
-                        const isDisabled = col === '-' || isNA;
+                        const isDisabled = col === '-' || isNA || isMiss;
 
                         return (
-                          <td key={colIdx} className="px-1 py-2">
-                            <div className="flex justify-center">
-                              <button 
-                                className={`w-6 h-6 rounded-md border flex items-center justify-center text-[10px] font-bold transition-all active:scale-90 ${
-                                  isDisabled 
-                                    ? 'bg-slate-200 border-slate-200 text-slate-400 cursor-not-allowed' 
-                                    : isOne 
-                                      ? 'bg-emerald-500 border-emerald-500 text-white' 
-                                      : isZero
-                                        ? 'bg-red-500 border-red-500 text-white'
-                                        : isN
-                                          ? 'bg-slate-400 border-slate-400 text-white'
-                                          : 'bg-white border-slate-200 text-slate-400 hover:border-emerald-300'
-                                }`}
-                                onClick={() => toggleScore(row.id, colIdx, col)}
-                                onMouseEnter={() => !isDisabled && opdCriteria[row.id]?.[colIdx] ? setHoveredCriteria(opdCriteria[row.id][colIdx]) : null}
-                                onMouseLeave={() => setHoveredCriteria(null)}
-                                disabled={isDisabled}
-                                title={reasons[`${row.id}_${colIdx}`] ? `เหตุผล: ${reasons[`${row.id}_${colIdx}`]}` : ''}
-                              >
-                                {isNA ? '-' : score}
-                                {isZero && reasons[`${row.id}_${colIdx}`] && (
-                                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border border-white" />
-                                )}
-                              </button>
-                            </div>
+                          <td key={colIdx} className={`px-1 py-2 border border-slate-200 ${col === '-' ? 'bg-pink-100' : ''}`}>
+                            {col !== '-' && (
+                              <div className="flex justify-center">
+                                <button 
+                                  className={`w-6 h-6 rounded-md border flex items-center justify-center text-[10px] font-bold transition-all active:scale-90 ${
+                                    isDisabled 
+                                      ? 'bg-slate-200 border-slate-200 text-slate-400 cursor-not-allowed' 
+                                      : isOne 
+                                        ? 'bg-emerald-500 border-emerald-500 text-white' 
+                                        : isZero
+                                          ? 'bg-red-500 border-red-500 text-white'
+                                          : isN
+                                            ? 'bg-slate-400 border-slate-400 text-white'
+                                            : 'bg-white border-slate-200 text-slate-400 hover:border-emerald-300'
+                                  }`}
+                                  onClick={() => toggleScore(row.id, colIdx, col)}
+                                  onMouseEnter={() => !isDisabled && opdCriteria[row.id]?.[colIdx] ? setHoveredCriteria(opdCriteria[row.id][colIdx]) : null}
+                                  onMouseLeave={() => setHoveredCriteria(null)}
+                                  disabled={isDisabled}
+                                  title={reasons[`${row.id}_${colIdx}`] ? `เหตุผล: ${reasons[`${row.id}_${colIdx}`]}` : ''}
+                                >
+                                  {isNA || isMiss ? '-' : score}
+                                  {isZero && reasons[`${row.id}_${colIdx}`] && (
+                                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border border-white" />
+                                  )}
+                                </button>
+                              </div>
+                            )}
                           </td>
                         );
                       })}
-                      <td className="px-2 py-2">
-                        <input type="text" disabled={isNA} className="w-10 text-center bg-white border border-slate-200 rounded py-0.5 text-xs font-bold text-emerald-600 disabled:bg-slate-100 disabled:text-slate-400" defaultValue="0" />
-                      </td>
-                      <td className="px-2 py-2">
-                        <input type="text" disabled={isNA} className="w-10 text-center bg-white border border-slate-200 rounded py-0.5 text-xs font-bold text-red-600 disabled:bg-slate-100 disabled:text-slate-400" defaultValue="0" />
+                      <td className="px-2 py-2 border border-slate-200 bg-pink-100"></td>
+                      <td className="px-2 py-2 border border-slate-200 bg-pink-100"></td>
+                      <td className="px-2 py-2 border border-slate-200 text-center font-bold text-slate-700">{full}</td>
+                      <td className="px-2 py-2 border border-slate-200 text-center font-bold text-blue-600">{earned}</td>
+                      <td className="px-2 py-2 border border-slate-200">
+                        <input 
+                          type="text" 
+                          className="w-full text-[10px] p-1 border border-slate-200 rounded focus:outline-none focus:border-blue-400"
+                          value={remarks[row.id] || ''}
+                          onChange={(e) => setRemarks(prev => ({ ...prev, [row.id]: e.target.value }))}
+                          placeholder="หมายเหตุ..."
+                        />
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
+              <tfoot className="bg-slate-50 font-bold text-xs">
+                <tr>
+                  <td colSpan={13} className="px-3 py-2 text-right border border-slate-200 text-slate-600">
+                    Full score รวม
+                  </td>
+                  <td className="px-2 py-2 text-center border border-slate-200 text-slate-700">{totalFull}</td>
+                  <td colSpan={2} className="px-3 py-2 text-left border border-slate-200 text-slate-500 font-normal">
+                    คะแนน (ไม่น้อยกว่า 19 คะแนน สำหรับผู้ป่วยนอกทั่วไป /ฉุกเฉิน: General case)
+                  </td>
+                </tr>
+                <tr>
+                  <td colSpan={13} className="px-3 py-2 text-right border border-slate-200 text-slate-600">
+                    Sum score รวม
+                  </td>
+                  <td className="px-2 py-2 text-center border border-slate-200 text-blue-600">{totalEarned}</td>
+                  <td colSpan={2} className="px-3 py-2 text-left border border-slate-200 text-slate-500 font-normal">
+                    คะแนน (ไม่น้อยกว่า 24 คะแนน สำหรับผู้ป่วยนอกโรคเรื้อรัง : Chronic case ที่มีการตรวจ follow up อย่างน้อย 1 ครั้ง)
+                  </td>
+                </tr>
+                <tr>
+                  <td colSpan={13} className="px-3 py-2 text-right border border-slate-200 text-slate-600">
+                    คิดเป็นร้อยละ
+                  </td>
+                  <td className="px-2 py-2 text-center border border-slate-200 text-emerald-600">{totalPct}%</td>
+                  <td colSpan={2} className="border border-slate-200"></td>
+                </tr>
+              </tfoot>
             </table>
+          </div>
+
+          {/* Overall Findings */}
+          <div className="mb-4 p-4 border border-slate-200 rounded-xl bg-slate-50">
+            <h4 className="font-bold text-slate-700 mb-3 text-sm">Overall finding (เลือกเพียง 1 ข้อ)</h4>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input 
+                  type="radio" 
+                  name="overall_finding" 
+                  className="w-4 h-4 accent-emerald-500" 
+                  checked={overallFinding === 'inadequate'}
+                  onChange={() => setOverallFinding('inadequate')}
+                />
+                <span className="text-xs font-medium text-slate-600">Documentation inadequate for meaningful review (ข้อมูลไม่เพียงพอสำหรับการทบทวน)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input 
+                  type="radio" 
+                  name="overall_finding" 
+                  className="w-4 h-4 accent-emerald-500" 
+                  checked={overallFinding === 'no_issue'}
+                  onChange={() => setOverallFinding('no_issue')}
+                />
+                <span className="text-xs font-medium text-slate-600">No significant medical record issue identified (ไม่มีปัญหาสำคัญจากการทบทวน)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input 
+                  type="radio" 
+                  name="overall_finding" 
+                  className="w-4 h-4 accent-emerald-500" 
+                  checked={overallFinding === 'issues_found'}
+                  onChange={() => setOverallFinding('issues_found')}
+                />
+                <span className="text-xs font-medium text-slate-600">Certain issues in question specify (มีปัญหาจากการทบทวนที่ต้องค้นต่อ ระบุ)</span>
+                <input 
+                  type="text" 
+                  className="flex-1 ml-2 border-b border-slate-300 bg-transparent focus:outline-none focus:border-emerald-500 text-xs px-2 py-1 disabled:opacity-50" 
+                  disabled={overallFinding !== 'issues_found'}
+                  value={overallFindingText}
+                  onChange={(e) => setOverallFindingText(e.target.value)}
+                />
+              </label>
+            </div>
+            
+            <div className="mt-4 pt-4 border-t border-slate-200 text-[10px] text-slate-500 space-y-1">
+              <p><span className="font-bold">คำอธิบาย:</span></p>
+              <p>NA ไม่จำเป็นต้องมีบันทึก สำหรับการ Visit ครั้งนั้น</p>
+              <p>Missing (M) ไม่มีเอกสารให้ตรวจสอบ เวชระเบียนไม่ครบ หรือหายไปบางส่วน</p>
+            </div>
           </div>
 
           {/* Actions - Compact */}
