@@ -16,6 +16,28 @@ interface Worksheet {
   type: string;
 }
 
+const DEPARTMENTS = [
+  { code: '028', name: 'ผู้ป่วยนอก' },
+  { code: '021', name: 'โรคเรื้อรัง' },
+  { code: '005', name: 'ทันตกรรม' },
+  { code: '011', name: 'ฉุกเฉิน' },
+  { code: '017', name: 'ห้องคลอด-นอก' },
+  { code: '041', name: 'แพทย์ไทย' },
+  { code: '042', name: 'กายภาพ' },
+];
+
+const WARDS = [
+  { code: '01', name: 'ตึกผู้ป่วยใน(IPD)' },
+  { code: '02', name: 'ตึกห้องคลอด(PP)' },
+  { code: '03', name: 'HomeWard' },
+  { code: '04', name: 'ตึกผู้ป่วยใน(IPD)2' },
+];
+
+const ALL_DEPARTMENTS = [
+  ...DEPARTMENTS.map(d => d.name),
+  ...WARDS.map(w => w.name)
+];
+
 export default function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
   const [worksheets, setWorksheets] = useState<Worksheet[]>([]);
@@ -24,11 +46,16 @@ export default function UserManagement() {
   const [isSearching, setIsSearching] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [userAccess, setUserAccess] = useState<string[]>([]);
+  const [departmentAccess, setDepartmentAccess] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+
+  const userStr = localStorage.getItem('user');
+  const currentUser = userStr ? JSON.parse(userStr) : null;
+  const isSuperAdmin = currentUser?.loginname === '0176' || currentUser?.loginname === '0382' || currentUser?.loginname === 'admin';
 
   useEffect(() => {
     fetchUsers();
@@ -147,16 +174,11 @@ export default function UserManagement() {
       const data = await response.json();
       if (data.success) {
         setUserAccess(data.access.map((a: any) => a.worksheet_id));
+        setDepartmentAccess(data.departmentAccess.map((d: any) => d.department_name));
       }
     } catch (error) {
       console.error('Failed to fetch access:', error);
     }
-  };
-
-  const handleToggleAccess = (wsId: string) => {
-    setUserAccess(prev => 
-      prev.includes(wsId) ? prev.filter(id => id !== wsId) : [...prev, wsId]
-    );
   };
 
   const handleSaveAccess = async () => {
@@ -166,7 +188,10 @@ export default function UserManagement() {
       const response = await fetch(`/api/users/${selectedUser.loginname}/access`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ worksheetIds: userAccess })
+        body: JSON.stringify({ 
+          worksheetIds: userAccess,
+          departmentNames: departmentAccess
+        })
       });
       const data = await response.json();
       if (data.success) {
@@ -218,36 +243,45 @@ export default function UserManagement() {
                       </td>
                       <td className="px-6 py-4 text-sm text-slate-600">{user.department}</td>
                       <td className="px-6 py-4">
-                        <select 
-                          value={user.role}
-                          onChange={(e) => handleUpdateUser(user.loginname, e.target.value, user.is_active)}
-                          className="text-xs font-bold px-2 py-1 rounded-lg border border-slate-200 bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-                        >
-                          <option value="user">User</option>
-                          <option value="admin">Admin</option>
-                        </select>
+                        {isSuperAdmin ? (
+                          <select 
+                            value={user.role}
+                            onChange={(e) => handleUpdateUser(user.loginname, e.target.value, user.is_active)}
+                            className="text-xs font-bold px-2 py-1 rounded-lg border border-slate-200 bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                          >
+                            <option value="user">User</option>
+                            <option value="admin">Admin</option>
+                          </select>
+                        ) : (
+                          <span className="text-xs font-bold px-2 py-1 rounded-lg bg-slate-100 text-slate-600 uppercase">
+                            {user.role}
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <button 
-                          onClick={() => handleUpdateUser(user.loginname, user.role, !user.is_active)}
+                          onClick={() => isSuperAdmin && handleUpdateUser(user.loginname, user.role, !user.is_active)}
+                          disabled={!isSuperAdmin}
                           className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors ${
                             user.is_active 
                               ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' 
                               : 'bg-red-50 text-red-600 hover:bg-red-100'
-                          }`}
+                          } ${!isSuperAdmin ? 'cursor-default opacity-80' : ''}`}
                         >
                           {user.is_active ? <CheckCircle className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
                           {user.is_active ? 'Active' : 'Inactive'}
                         </button>
                       </td>
                       <td className="px-6 py-4 text-right space-x-2">
-                        <button 
-                          onClick={() => handleChangePassword(user)}
-                          className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                          title="เปลี่ยนรหัสผ่าน"
-                        >
-                          <Lock className="w-4 h-4" />
-                        </button>
+                        {isSuperAdmin && (
+                          <button 
+                            onClick={() => handleChangePassword(user)}
+                            className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                            title="เปลี่ยนรหัสผ่าน"
+                          >
+                            <Lock className="w-4 h-4" />
+                          </button>
+                        )}
                         <button 
                           onClick={() => handleEditAccess(user)}
                           className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -255,13 +289,15 @@ export default function UserManagement() {
                         >
                           <Shield className="w-4 h-4" />
                         </button>
-                        <button 
-                          onClick={() => handleDeleteUser(user.loginname)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="ลบผู้ใช้งาน"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {isSuperAdmin && (
+                          <button 
+                            onClick={() => handleDeleteUser(user.loginname)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="ลบผู้ใช้งาน"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -273,53 +309,66 @@ export default function UserManagement() {
 
         {/* Right: Add User & Access */}
         <div className="space-y-6">
-          {/* Add User from HosXP */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-            <h2 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-              <UserPlus className="w-5 h-5 text-blue-600" />
-              เพิ่มผู้ใช้งานจาก HosXP
-            </h2>
-            <div className="flex gap-2 mb-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input 
-                  type="text"
-                  placeholder="ค้นหา Loginname หรือ ชื่อ..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSearchHos()}
-                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-              <button 
-                onClick={handleSearchHos}
-                disabled={isSearching || searchQuery.length < 2}
-                className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 disabled:opacity-50 transition-colors"
-              >
-                ค้นหา
-              </button>
-            </div>
-
-            <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
-              {hosUsers.map((hu) => (
-                <div key={hu.loginname} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <div className="flex flex-col">
-                    <span className="text-sm font-bold text-slate-700">{hu.name}</span>
-                    <span className="text-[10px] text-slate-400">{hu.loginname} | {hu.department}</span>
-                  </div>
-                  <button 
-                    onClick={() => handleAddUser(hu)}
-                    className="p-1.5 bg-white text-blue-600 border border-blue-100 rounded-lg hover:bg-blue-600 hover:text-white transition-all"
-                  >
-                    <UserPlus className="w-4 h-4" />
-                  </button>
+          {/* Add User from HosXP - Only for Super Admins */}
+          {isSuperAdmin ? (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+              <h2 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <UserPlus className="w-5 h-5 text-blue-600" />
+                เพิ่มผู้ใช้งานจาก HosXP
+              </h2>
+              <div className="flex gap-2 mb-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input 
+                    type="text"
+                    placeholder="ค้นหา Loginname หรือ ชื่อ..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSearchHos()}
+                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
                 </div>
-              ))}
-              {hosUsers.length === 0 && searchQuery.length >= 2 && !isSearching && (
-                <p className="text-center text-xs text-slate-400 py-4">ไม่พบข้อมูลผู้ใช้งาน</p>
-              )}
+                <button 
+                  onClick={handleSearchHos}
+                  disabled={isSearching || searchQuery.length < 2}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                >
+                  ค้นหา
+                </button>
+              </div>
+
+              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+                {hosUsers.map((hu) => (
+                  <div key={hu.loginname} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-bold text-slate-700">{hu.name}</span>
+                      <span className="text-[10px] text-slate-400">{hu.loginname} | {hu.department}</span>
+                    </div>
+                    <button 
+                      onClick={() => handleAddUser(hu)}
+                      className="p-1.5 bg-white text-blue-600 border border-blue-100 rounded-lg hover:bg-blue-600 hover:text-white transition-all"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+                {hosUsers.length === 0 && searchQuery.length >= 2 && !isSearching && (
+                  <p className="text-center text-xs text-slate-400 py-4">ไม่พบข้อมูลผู้ใช้งาน</p>
+                )}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="bg-blue-50 rounded-2xl border border-blue-100 p-6">
+              <h2 className="font-bold text-blue-800 mb-2 flex items-center gap-2">
+                <Shield className="w-5 h-5" />
+                โหมดจัดการสิทธิ์
+              </h2>
+              <p className="text-xs text-blue-600 leading-relaxed">
+                คุณสามารถจัดการสิทธิ์การเข้าถึงใบงานให้กับผู้ใช้งานที่มีอยู่ในระบบได้เท่านั้น 
+                หากต้องการเพิ่มผู้ใช้งานใหม่จาก HosXP กรุณาติดต่อผู้ดูแลระบบสูงสุด
+              </p>
+            </div>
+          )}
 
           {/* Worksheet Access Modal/Section */}
           {selectedUser && (
@@ -334,36 +383,71 @@ export default function UserManagement() {
                 </button>
               </div>
               
-              <p className="text-xs text-slate-500 mb-4">เลือกใบงานที่อนุญาตให้ผู้ใช้งานรายนี้มองเห็นและประเมินได้</p>
-              
-              <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 mb-6">
-                {worksheets.map((ws) => (
-                  <label 
-                    key={ws.id} 
-                    className={`flex items-center p-3 rounded-xl border cursor-pointer transition-all ${
-                      userAccess.includes(ws.id) 
-                        ? 'bg-blue-50 border-blue-200' 
-                        : 'bg-white border-slate-100 hover:border-slate-200'
-                    }`}
-                  >
-                    <input 
-                      type="checkbox"
-                      checked={userAccess.includes(ws.id)}
-                      onChange={() => handleToggleAccess(ws.id)}
-                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 mr-3"
-                    />
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold text-slate-700">{ws.name}</span>
-                      <span className="text-[10px] text-slate-400 uppercase font-bold">{ws.type}</span>
-                    </div>
-                  </label>
-                ))}
+              <div className="space-y-6 max-h-[600px] overflow-y-auto pr-2">
+                {/* Department Access */}
+                <div>
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">สิทธิ์ตามแผนก (เห็นทุกใบงานในแผนก)</h3>
+                  <div className="grid grid-cols-1 gap-2">
+                    {ALL_DEPARTMENTS.map(depName => (
+                      <label 
+                        key={depName} 
+                        className={`flex items-center p-3 rounded-xl border cursor-pointer transition-all ${
+                          departmentAccess.includes(depName) 
+                            ? 'bg-emerald-50 border-emerald-200' 
+                            : 'bg-white border-slate-100 hover:border-slate-200'
+                        }`}
+                      >
+                        <input 
+                          type="checkbox"
+                          checked={departmentAccess.includes(depName)}
+                          onChange={(e) => {
+                            if (e.target.checked) setDepartmentAccess([...departmentAccess, depName]);
+                            else setDepartmentAccess(departmentAccess.filter(d => d !== depName));
+                          }}
+                          className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 mr-3"
+                        />
+                        <span className="text-sm font-bold text-slate-700">{depName}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Individual Worksheet Access */}
+                <div>
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">สิทธิ์รายใบงาน (เพิ่มเติม)</h3>
+                  <div className="grid grid-cols-1 gap-2">
+                    {worksheets.map((ws) => (
+                      <label 
+                        key={ws.id} 
+                        className={`flex items-center p-3 rounded-xl border cursor-pointer transition-all ${
+                          userAccess.includes(ws.id) 
+                            ? 'bg-blue-50 border-blue-200' 
+                            : 'bg-white border-slate-100 hover:border-slate-200'
+                        }`}
+                      >
+                        <input 
+                          type="checkbox"
+                          checked={userAccess.includes(ws.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) setUserAccess([...userAccess, ws.id]);
+                            else setUserAccess(userAccess.filter(id => id !== ws.id));
+                          }}
+                          className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 mr-3"
+                        />
+                        <div className="flex flex-col">
+                          <span className="text-sm font-bold text-slate-700">{ws.name}</span>
+                          <span className="text-[10px] text-slate-400 uppercase font-bold">{ws.type}</span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               <button 
                 onClick={handleSaveAccess}
                 disabled={isSaving}
-                className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 shadow-md shadow-blue-100 transition-all"
+                className="w-full mt-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 shadow-md shadow-blue-100 transition-all"
               >
                 {isSaving ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่าสิทธิ์'}
               </button>

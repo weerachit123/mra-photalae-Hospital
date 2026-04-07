@@ -20,6 +20,19 @@ const DEPARTMENTS = [
 
 export default function AuditOPD() {
   const navigate = useNavigate();
+  const userStr = localStorage.getItem('user');
+  const user = userStr ? JSON.parse(userStr) : null;
+  const isSuperAdmin = user?.loginname === '0176' || user?.loginname === '0382' || user?.loginname === 'admin';
+
+  if (!isSuperAdmin) {
+    return (
+      <div className="p-8 text-center bg-white rounded-2xl border border-slate-200">
+        <h3 className="text-xl font-bold text-red-600 mb-2">เข้าถึงไม่ได้</h3>
+        <p className="text-slate-600">คุณไม่มีสิทธิ์ในการสร้างใบงานใหม่ (สุ่มเคสจาก HosXP) กรุณาติดต่อผู้ดูแลระบบสูงสุด</p>
+      </div>
+    );
+  }
+
   const [startDate, setStartDate] = useState('2023-07-01');
   const [endDate, setEndDate] = useState('2023-09-30');
   const [selectedDep, setSelectedDep] = useState(DEPARTMENTS[6].code); // Default to 042

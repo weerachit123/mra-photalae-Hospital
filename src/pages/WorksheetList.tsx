@@ -60,22 +60,11 @@ export default function WorksheetList() {
     }
   };
 
-  // Permission logic: Admins see all, others see only their department's worksheets
-  const permittedWorksheets = isAdmin 
-    ? worksheets 
-    : worksheets.filter(ws => {
-        // If user has no department, they see nothing (or maybe they should see everything? No, restrict by default)
-        if (!user?.department) return false;
-        
-        // Match by department name (since worksheet stores name)
-        // Or if user.department is a code, we might need a mapping.
-        // For now, we'll assume user.department might contain the name or code.
-        return ws.department.includes(user.department) || user.department.includes(ws.department);
-      });
-
+  // Permission logic: Backend already filters based on role and user_worksheet_access.
+  // We just show what the API returns.
   const filteredWorksheets = activeTab === 'ALL' 
-    ? permittedWorksheets 
-    : permittedWorksheets.filter(ws => ws.type === activeTab);
+    ? worksheets 
+    : worksheets.filter(ws => ws.type === activeTab);
 
   // Group by name (Round)
   const groupedWorksheets = filteredWorksheets.reduce((acc, ws) => {

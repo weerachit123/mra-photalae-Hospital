@@ -271,6 +271,16 @@ async function startServer() {
             UNIQUE KEY (loginname, worksheet_id)
           )
         `);
+
+        await connection.query(`
+          CREATE TABLE IF NOT EXISTS user_department_access (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            loginname VARCHAR(50) NOT NULL,
+            department_name VARCHAR(255) NOT NULL,
+            FOREIGN KEY (loginname) REFERENCES users(loginname) ON DELETE CASCADE,
+            UNIQUE KEY (loginname, department_name)
+          )
+        `);
         
         // Save config
         const savedConfig = await getDbConfig();
@@ -601,11 +611,19 @@ async function startServer() {
     if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
     const { loginname } = req.params;
     try {
-      const [rows] = await mraPool.execute(
+      const [wsRows] = await mraPool.execute(
         'SELECT worksheet_id FROM user_worksheet_access WHERE loginname = ?',
         [loginname]
       );
-      res.json({ success: true, access: rows });
+      const [depRows] = await mraPool.execute(
+        'SELECT department_name FROM user_department_access WHERE loginname = ?',
+        [loginname]
+      );
+      res.json({ 
+        success: true, 
+        access: wsRows,
+        departmentAccess: depRows
+      });
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });
     }
@@ -615,27 +633,40 @@ async function startServer() {
   app.post('/api/users/:loginname/access', async (req, res) => {
     if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
     const { loginname } = req.params;
-    const { worksheetIds } = req.body; // Array of worksheet IDs
+    const { worksheetIds, departmentNames } = req.body; // Arrays
 
     const connection = await mraPool.getConnection();
     try {
       await connection.beginTransaction();
       
-      // Remove old access
-      await connection.execute('DELETE FROM user_worksheet_access WHERE loginname = ?', [loginname]);
-      
-      // Add new access
-      if (worksheetIds && worksheetIds.length > 0) {
-        for (const wsId of worksheetIds) {
-          await connection.execute(
-            'INSERT INTO user_worksheet_access (loginname, worksheet_id) VALUES (?, ?)',
-            [loginname, wsId]
-          );
+      // Update Worksheet Access
+      if (worksheetIds !== undefined) {
+        await connection.execute('DELETE FROM user_worksheet_access WHERE loginname = ?', [loginname]);
+        if (worksheetIds && worksheetIds.length > 0) {
+          for (const wsId of worksheetIds) {
+            await connection.execute(
+              'INSERT INTO user_worksheet_access (loginname, worksheet_id) VALUES (?, ?)',
+              [loginname, wsId]
+            );
+          }
+        }
+      }
+
+      // Update Department Access
+      if (departmentNames !== undefined) {
+        await connection.execute('DELETE FROM user_department_access WHERE loginname = ?', [loginname]);
+        if (departmentNames && departmentNames.length > 0) {
+          for (const depName of departmentNames) {
+            await connection.execute(
+              'INSERT INTO user_department_access (loginname, department_name) VALUES (?, ?)',
+              [loginname, depName]
+            );
+          }
         }
       }
       
       await connection.commit();
-      res.json({ success: true, message: 'อัปเดตสิทธิ์การเข้าถึงใบงานเรียบร้อยแล้ว' });
+      res.json({ success: true, message: 'อัปเดตสิทธิ์การเข้าถึงเรียบร้อยแล้ว' });
     } catch (error: any) {
       await connection.rollback();
       res.status(500).json({ success: false, message: error.message });
@@ -734,11 +765,15 @@ async function startServer() {
 
       if (role !== 'admin' && loginname) {
         query = `
-          SELECT w.* FROM worksheets w
-          JOIN user_worksheet_access uwa ON w.id = uwa.worksheet_id
-          WHERE uwa.loginname = ?
+          SELECT DISTINCT w.* FROM worksheets w
+          LEFT JOIN user_worksheet_access uwa ON w.id = uwa.worksheet_id
+          LEFT JOIN user_department_access uda ON w.department = uda.department_name
+          LEFT JOIN users u ON u.loginname = ?
+          WHERE uwa.loginname = ? 
+             OR uda.loginname = ? 
+             OR w.department = u.department
         `;
-        params = [loginname];
+        params = [loginname, loginname, loginname];
       }
 
       const [worksheets] = await mraPool.query<mysql.RowDataPacket[]>(query + ' ORDER BY created_at DESC', params);

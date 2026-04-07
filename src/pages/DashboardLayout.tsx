@@ -19,6 +19,7 @@ export default function DashboardLayout() {
   }
 
   const isAdmin = user.role === 'admin' || user.name === 'Admin User' || user.loginname === '0176' || user.loginname === '0382';
+  const isSuperAdmin = user.loginname === '0176' || user.loginname === '0382' || user.loginname === 'admin';
 
   const menuItems = [
     { path: '/dashboard/stats', label: 'Dashboard สรุปผล', icon: LayoutDashboard },
@@ -27,8 +28,10 @@ export default function DashboardLayout() {
   ];
 
   const adminItems = [
-    { path: '/dashboard/audit-opd', label: 'Audit OPD (สร้างใบงาน)', icon: ClipboardCheck },
-    { path: '/dashboard/audit-ipd', label: 'Audit IPD (สร้างใบงาน)', icon: ClipboardCheck },
+    ...(isSuperAdmin ? [
+      { path: '/dashboard/audit-opd', label: 'Audit OPD (สร้างใบงาน)', icon: ClipboardCheck },
+      { path: '/dashboard/audit-ipd', label: 'Audit IPD (สร้างใบงาน)', icon: ClipboardCheck },
+    ] : []),
     { path: '/dashboard/memorandum', label: 'ปริ้นสรุป เสนอเซ็น', icon: Printer },
     { path: '/dashboard/edit-criteria', label: 'ตั้งค่าเกณฑ์ประเมิน', icon: Settings },
     { path: '/dashboard/users', label: 'จัดการผู้ใช้งาน', icon: Users },

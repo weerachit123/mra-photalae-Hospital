@@ -129,6 +129,19 @@ export const getIPDCriteria = () => {
 
 export default function EditCriteria() {
   const navigate = useNavigate();
+  const userStr = localStorage.getItem('user');
+  const user = userStr ? JSON.parse(userStr) : null;
+  const isSuperAdmin = user?.loginname === '0176' || user?.loginname === '0382' || user?.loginname === 'admin';
+
+  if (!isSuperAdmin) {
+    return (
+      <div className="p-8 text-center bg-white rounded-2xl border border-slate-200">
+        <h3 className="text-xl font-bold text-red-600 mb-2">เข้าถึงไม่ได้</h3>
+        <p className="text-slate-600">คุณไม่มีสิทธิ์ในการแก้ไขเกณฑ์การประเมิน กรุณาติดต่อผู้ดูแลระบบสูงสุด</p>
+      </div>
+    );
+  }
+
   const [opdCriteria, setOpdCriteria] = useState<Record<string, string[]>>({});
   const [ipdCriteria, setIpdCriteria] = useState<Record<string, string[]>>({});
   const [activeTab, setActiveTab] = useState<'OPD' | 'IPD'>('OPD');
