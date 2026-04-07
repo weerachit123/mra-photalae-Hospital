@@ -14,6 +14,7 @@ import MemorandumReport from './pages/MemorandumReport';
 import UserManual from './pages/UserManual';
 
 import EditCriteria from './pages/EditCriteria';
+import UserManagement from './pages/UserManagement';
 
 // A simple Home component for the dashboard
 function DashboardHome() {
@@ -50,6 +51,7 @@ export default function App() {
           <Route path="audit-ipd" element={<AuditIPD />} />
           <Route path="audit-ipd/form/:an" element={<AuditFormIPD />} />
           <Route path="edit-criteria" element={<EditCriteria />} />
+          <Route path="users" element={<UserManagement />} />
           <Route path="manual" element={<UserManual />} />
         </Route>
         <Route path="/manual" element={<UserManual />} />

@@ -31,6 +31,7 @@ export default function DashboardLayout() {
     { path: '/dashboard/audit-ipd', label: 'Audit IPD (สร้างใบงาน)', icon: ClipboardCheck },
     { path: '/dashboard/memorandum', label: 'ปริ้นสรุป เสนอเซ็น', icon: Printer },
     { path: '/dashboard/edit-criteria', label: 'ตั้งค่าเกณฑ์ประเมิน', icon: Settings },
+    { path: '/dashboard/users', label: 'จัดการผู้ใช้งาน', icon: Users },
   ];
 
   return (

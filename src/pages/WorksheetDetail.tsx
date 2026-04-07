@@ -32,7 +32,7 @@ export default function WorksheetDetail() {
 
     const fetchWorksheet = async () => {
       try {
-        const response = await fetch(`/api/mra/worksheets/${id}`);
+        const response = await fetch(`/api/mra/worksheets/${id}?loginname=${user?.loginname}&role=${user?.role}`);
         const data = await response.json();
         if (data.success) {
           setWorksheet(data.data);

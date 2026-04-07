@@ -247,6 +247,28 @@ async function startServer() {
             FOREIGN KEY (case_id) REFERENCES audit_cases(id) ON DELETE CASCADE
           )
         `);
+
+        await connection.query(`
+          CREATE TABLE IF NOT EXISTS users (
+            loginname VARCHAR(50) PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            department VARCHAR(255),
+            role VARCHAR(20) DEFAULT 'user',
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+
+        await connection.query(`
+          CREATE TABLE IF NOT EXISTS user_worksheet_access (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            loginname VARCHAR(50) NOT NULL,
+            worksheet_id VARCHAR(50) NOT NULL,
+            FOREIGN KEY (loginname) REFERENCES users(loginname) ON DELETE CASCADE,
+            FOREIGN KEY (worksheet_id) REFERENCES worksheets(id) ON DELETE CASCADE,
+            UNIQUE KEY (loginname, worksheet_id)
+          )
+        `);
         
         // Save config
         const savedConfig = await getDbConfig();
@@ -270,26 +292,70 @@ async function startServer() {
     }
   });
 
-  // Login (Uses HOS Database)
+  // Login (Uses HOS Database for Auth, MRA Database for Permissions)
   app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
 
     try {
       if (hosPool) {
-        const [rows] = await hosPool.execute<mysql.RowDataPacket[]>(
-          'SELECT loginname, name, department FROM opduser WHERE loginname = ? AND password = ? AND (account_disable IS NULL OR account_disable <> "Y")',
-          [username, password]
+        // 1. Check Authentication in HosXP
+        const [hosRows] = await hosPool.execute<mysql.RowDataPacket[]>(
+          'SELECT loginname, name, department FROM opduser WHERE loginname = ? AND (password = MD5(?) OR password = MD5(UPPER(?))) AND (account_disable IS NULL OR account_disable <> "Y")',
+          [username, password, password]
         );
 
-        if (rows.length > 0) {
-          const user = rows[0];
-          // Simple role assignment: IT department or specific names/IDs are admins
-          const adminIds = ['0176', '0382', 'admin'];
-          if (user.department === 'IT' || adminIds.includes(user.loginname) || user.name === 'Admin User') {
-            user.role = 'admin';
-          } else {
-            user.role = 'user';
+        if (hosRows.length > 0) {
+          const hosUser = hosRows[0];
+          
+          // 2. Check Permissions in MRA Database
+          let userRole = 'user';
+          let isActive = true;
+          let localUserFound = false;
+
+          if (mraPool) {
+            const [mraRows] = await mraPool.execute<mysql.RowDataPacket[]>(
+              'SELECT role, is_active FROM users WHERE loginname = ?',
+              [username]
+            );
+
+            if (mraRows.length > 0) {
+              userRole = mraRows[0].role;
+              isActive = mraRows[0].is_active;
+              localUserFound = true;
+            }
           }
+
+          // Bootstrap Admins (always allowed if authenticated in HosXP)
+          const bootstrapAdmins = ['0176', '0382', 'admin'];
+          if (bootstrapAdmins.includes(hosUser.loginname) || hosUser.department === 'IT') {
+            userRole = 'admin';
+            isActive = true;
+            
+            // Auto-create bootstrap admin in local users if not exists
+            if (mraPool && !localUserFound) {
+              await mraPool.execute(
+                'INSERT IGNORE INTO users (loginname, name, department, role) VALUES (?, ?, ?, ?)',
+                [hosUser.loginname, hosUser.name, hosUser.department, 'admin']
+              );
+            }
+          }
+
+          if (!isActive && !bootstrapAdmins.includes(hosUser.loginname)) {
+            return res.status(403).json({ success: false, message: 'บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ' });
+          }
+
+          // If not a bootstrap admin and not in local users, they don't have access
+          if (!localUserFound && !bootstrapAdmins.includes(hosUser.loginname)) {
+            return res.status(403).json({ success: false, message: 'คุณไม่มีสิทธิ์เข้าใช้งานระบบนี้ กรุณาติดต่อผู้ดูแลระบบเพื่อเพิ่มชื่อผู้ใช้งาน' });
+          }
+
+          const user = {
+            loginname: hosUser.loginname,
+            name: hosUser.name,
+            department: hosUser.department,
+            role: userRole
+          };
+
           return res.json({ success: true, message: 'เข้าสู่ระบบสำเร็จ', user });
         } else {
           return res.status(401).json({ success: false, message: 'ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง' });
@@ -303,6 +369,127 @@ async function startServer() {
         message: 'เข้าสู่ระบบสำเร็จ (Mock Mode)', 
         user: { name: username || 'Admin User', department: 'IT', role: 'admin' } 
       });
+    }
+  });
+
+  // --- User Management API ---
+
+  // List all local users
+  app.get('/api/users', async (req, res) => {
+    if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
+    try {
+      const [rows] = await mraPool.execute('SELECT * FROM users ORDER BY created_at DESC');
+      res.json({ success: true, users: rows });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // Search users from HosXP
+  app.get('/api/hos-users/search', async (req, res) => {
+    if (!hosPool) return res.status(500).json({ success: false, message: 'HOS Database not connected' });
+    const query = req.query.q as string;
+    if (!query || query.length < 2) return res.json({ success: true, users: [] });
+
+    try {
+      const [rows] = await hosPool.execute(
+        'SELECT loginname, name, department FROM opduser WHERE (loginname LIKE ? OR name LIKE ?) AND (account_disable IS NULL OR account_disable <> "Y") LIMIT 20',
+        [`%${query}%`, `%${query}%`]
+      );
+      res.json({ success: true, users: rows });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // Add user to local system
+  app.post('/api/users', async (req, res) => {
+    if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
+    const { loginname, name, department, role } = req.body;
+    try {
+      await mraPool.execute(
+        'INSERT INTO users (loginname, name, department, role) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=?, department=?, role=?',
+        [loginname, name, department, role, name, department, role]
+      );
+      res.json({ success: true, message: 'เพิ่มผู้ใช้งานเรียบร้อยแล้ว' });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // Update user role/status
+  app.put('/api/users/:loginname', async (req, res) => {
+    if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
+    const { loginname } = req.params;
+    const { role, is_active } = req.body;
+    try {
+      await mraPool.execute(
+        'UPDATE users SET role = ?, is_active = ? WHERE loginname = ?',
+        [role, is_active, loginname]
+      );
+      res.json({ success: true, message: 'อัปเดตข้อมูลผู้ใช้งานเรียบร้อยแล้ว' });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // Delete user
+  app.delete('/api/users/:loginname', async (req, res) => {
+    if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
+    const { loginname } = req.params;
+    try {
+      await mraPool.execute('DELETE FROM users WHERE loginname = ?', [loginname]);
+      res.json({ success: true, message: 'ลบผู้ใช้งานเรียบร้อยแล้ว' });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // Get user worksheet access
+  app.get('/api/users/:loginname/access', async (req, res) => {
+    if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
+    const { loginname } = req.params;
+    try {
+      const [rows] = await mraPool.execute(
+        'SELECT worksheet_id FROM user_worksheet_access WHERE loginname = ?',
+        [loginname]
+      );
+      res.json({ success: true, access: rows });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // Update user worksheet access
+  app.post('/api/users/:loginname/access', async (req, res) => {
+    if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
+    const { loginname } = req.params;
+    const { worksheetIds } = req.body; // Array of worksheet IDs
+
+    const connection = await mraPool.getConnection();
+    try {
+      await connection.beginTransaction();
+      
+      // Remove old access
+      await connection.execute('DELETE FROM user_worksheet_access WHERE loginname = ?', [loginname]);
+      
+      // Add new access
+      if (worksheetIds && worksheetIds.length > 0) {
+        for (const wsId of worksheetIds) {
+          await connection.execute(
+            'INSERT INTO user_worksheet_access (loginname, worksheet_id) VALUES (?, ?)',
+            [loginname, wsId]
+          );
+        }
+      }
+      
+      await connection.commit();
+      res.json({ success: true, message: 'อัปเดตสิทธิ์การเข้าถึงใบงานเรียบร้อยแล้ว' });
+    } catch (error: any) {
+      await connection.rollback();
+      res.status(500).json({ success: false, message: error.message });
+    } finally {
+      connection.release();
     }
   });
 
@@ -379,6 +566,8 @@ async function startServer() {
   // --- MRA Persistence Endpoints (Uses MRA Database) ---
 
   app.get('/api/mra/worksheets', async (req, res) => {
+    const { loginname, role } = req.query;
+
     const fetchFromJson = async () => {
       const data = await getJsonData();
       return res.json({ success: true, data: data.worksheets, mock: true });
@@ -389,7 +578,19 @@ async function startServer() {
     }
     
     try {
-      const [worksheets] = await mraPool.query<mysql.RowDataPacket[]>('SELECT * FROM worksheets ORDER BY created_at DESC');
+      let query = 'SELECT * FROM worksheets';
+      let params: any[] = [];
+
+      if (role !== 'admin' && loginname) {
+        query = `
+          SELECT w.* FROM worksheets w
+          JOIN user_worksheet_access uwa ON w.id = uwa.worksheet_id
+          WHERE uwa.loginname = ?
+        `;
+        params = [loginname];
+      }
+
+      const [worksheets] = await mraPool.query<mysql.RowDataPacket[]>(query + ' ORDER BY created_at DESC', params);
       
       for (const ws of worksheets) {
         const [cases] = await mraPool.query<mysql.RowDataPacket[]>('SELECT * FROM audit_cases WHERE worksheet_id = ?', [ws.id]);
@@ -404,6 +605,8 @@ async function startServer() {
   });
 
   app.get('/api/mra/worksheets/:id', async (req, res) => {
+    const { loginname, role } = req.query;
+
     const fetchFromJson = async () => {
       const data = await getJsonData();
       const ws = data.worksheets.find((w: any) => w.id === req.params.id);
@@ -416,8 +619,20 @@ async function startServer() {
     }
     
     try {
-      const [worksheets] = await mraPool.query<mysql.RowDataPacket[]>('SELECT * FROM worksheets WHERE id = ?', [req.params.id]);
-      if (worksheets.length === 0) return res.status(404).json({ success: false, message: 'Worksheet not found' });
+      let query = 'SELECT * FROM worksheets WHERE id = ?';
+      let params: any[] = [req.params.id];
+
+      if (role !== 'admin' && loginname) {
+        query = `
+          SELECT w.* FROM worksheets w
+          JOIN user_worksheet_access uwa ON w.id = uwa.worksheet_id
+          WHERE w.id = ? AND uwa.loginname = ?
+        `;
+        params = [req.params.id, loginname];
+      }
+
+      const [worksheets] = await mraPool.query<mysql.RowDataPacket[]>(query, params);
+      if (worksheets.length === 0) return res.status(404).json({ success: false, message: 'Worksheet not found or access denied' });
       
       const ws = worksheets[0];
       const [cases] = await mraPool.query<mysql.RowDataPacket[]>('SELECT * FROM audit_cases WHERE worksheet_id = ?', [ws.id]);

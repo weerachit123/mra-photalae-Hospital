@@ -22,7 +22,7 @@ export default function WorksheetList() {
   useEffect(() => {
     const fetchWorksheets = async () => {
       try {
-        const response = await fetch('/api/mra/worksheets');
+        const response = await fetch(`/api/mra/worksheets?loginname=${user?.loginname}&role=${user?.role}`);
         const data = await response.json();
         if (data.success) {
           setWorksheets(data.data);
