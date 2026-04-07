@@ -40,6 +40,7 @@ interface Case {
   hn: string;
   an?: string;
   status: string;
+  doctor_name?: string;
   scores?: Record<string, string>;
   reasons?: Record<string, string>;
 }
@@ -56,6 +57,7 @@ interface Worksheet {
 export default function DetailedReport() {
   const [worksheets, setWorksheets] = useState<Worksheet[]>([]);
   const [selectedRound, setSelectedRound] = useState<string>('all');
+  const [selectedDoctor, setSelectedDoctor] = useState<string>('all');
   const [reportType, setReportType] = useState<'OPD' | 'IPD'>('OPD');
 
   useEffect(() => {
@@ -83,13 +85,33 @@ export default function DetailedReport() {
     return uniqueRounds.sort();
   }, [worksheets]);
 
+  const doctors = useMemo(() => {
+    const docSet = new Set<string>();
+    worksheets.forEach(ws => {
+      if (ws.type === reportType) {
+        ws.cases.forEach(c => {
+          if (c.doctor_name) docSet.add(c.doctor_name);
+        });
+      }
+    });
+    return Array.from(docSet).sort();
+  }, [worksheets, reportType]);
+
   const filteredWorksheets = useMemo(() => {
     return worksheets.filter(w => {
       const matchRound = selectedRound === 'all' || (w.name || 'Unknown') === selectedRound;
       const matchType = w.type === reportType;
+      
+      // If filtering by doctor, we still return the worksheet if it has ANY case by that doctor
+      // But we will filter the cases inside calculateMatrix
+      if (selectedDoctor !== 'all') {
+        const hasDoctor = w.cases.some(c => c.doctor_name === selectedDoctor);
+        return matchRound && matchType && hasDoctor;
+      }
+      
       return matchRound && matchType;
     });
-  }, [worksheets, selectedRound, reportType]);
+  }, [worksheets, selectedRound, reportType, selectedDoctor]);
 
   const departments = useMemo(() => {
     const uniqueDepts = Array.from(new Set(filteredWorksheets.map(w => w.department || 'Unknown')));
@@ -111,7 +133,8 @@ export default function DetailedReport() {
 
     wsList.forEach(ws => {
       ws.cases.forEach(c => {
-        if (c.status === 'audited' && c.scores) {
+        const matchDoctor = selectedDoctor === 'all' || c.doctor_name === selectedDoctor;
+        if (c.status === 'audited' && c.scores && matchDoctor) {
           totalCases++;
           rows.forEach(r => {
             for (let i = 0; i < r.cols; i++) {
@@ -388,6 +411,18 @@ export default function DetailedReport() {
           </select>
         </div>
 
+        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm">
+          <Users className="w-4 h-4 text-slate-400" />
+          <select 
+            value={selectedDoctor} 
+            onChange={(e) => setSelectedDoctor(e.target.value)}
+            className="text-xs font-bold text-slate-700 focus:outline-none bg-transparent max-w-[200px]"
+          >
+            <option value="all">แพทย์ทุกคน</option>
+            {doctors.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+        </div>
+
         <div className="flex bg-slate-100 p-1 rounded-lg">
           <button 
             onClick={() => setReportType('OPD')}
@@ -408,7 +443,7 @@ export default function DetailedReport() {
       {renderMatrixTable(
         `ภาพรวมการประเมินคุณภาพการบันทึกเวชระเบียน (${reportType})`, 
         overallMatrix, 
-        `รอบ: ${selectedRound === 'all' ? 'ทุกรอบ' : selectedRound} | จำนวนเคสที่ประเมินแล้ว: ${overallMatrix.totalCases} ฉบับ`
+        `รอบ: ${selectedRound === 'all' ? 'ทุกรอบ' : selectedRound} | แพทย์: ${selectedDoctor === 'all' ? 'ทุกคน' : selectedDoctor} | จำนวนเคสที่ประเมินแล้ว: ${overallMatrix.totalCases} ฉบับ`
       )}
 
       {/* Departmental Matrices */}

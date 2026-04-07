@@ -445,6 +445,54 @@ async function startServer() {
     }
   });
 
+  // Get users with access to a specific worksheet
+  app.get('/api/mra/worksheets/:id/access', async (req, res) => {
+    if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
+    const { id } = req.params;
+    try {
+      const [rows] = await mraPool.execute(
+        'SELECT loginname FROM user_worksheet_access WHERE worksheet_id = ?',
+        [id]
+      );
+      res.json({ success: true, access: rows });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // Update users with access to a specific worksheet
+  app.post('/api/mra/worksheets/:id/access', async (req, res) => {
+    if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
+    const { id } = req.params;
+    const { loginnames } = req.body; // Array of loginnames
+
+    const connection = await mraPool.getConnection();
+    try {
+      await connection.beginTransaction();
+      
+      // Remove old access
+      await connection.execute('DELETE FROM user_worksheet_access WHERE worksheet_id = ?', [id]);
+      
+      // Add new access
+      if (loginnames && loginnames.length > 0) {
+        for (const loginname of loginnames) {
+          await connection.execute(
+            'INSERT INTO user_worksheet_access (loginname, worksheet_id) VALUES (?, ?)',
+            [loginname, id]
+          );
+        }
+      }
+      
+      await connection.commit();
+      res.json({ success: true, message: 'อัปเดตสิทธิ์การเข้าถึงใบงานเรียบร้อยแล้ว' });
+    } catch (error: any) {
+      await connection.rollback();
+      res.status(500).json({ success: false, message: error.message });
+    } finally {
+      connection.release();
+    }
+  });
+
   // Get user worksheet access
   app.get('/api/users/:loginname/access', async (req, res) => {
     if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
