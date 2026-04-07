@@ -25,6 +25,10 @@ export default function UserManagement() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [userAccess, setUserAccess] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
 
   useEffect(() => {
     fetchUsers();
@@ -88,18 +92,41 @@ export default function UserManagement() {
     }
   };
 
-  const handleUpdateUser = async (loginname: string, role: string, is_active: boolean) => {
+  const handleUpdateUser = async (loginname: string, role: string, is_active: boolean, password?: string) => {
     try {
+      const body: any = { role, is_active };
+      if (password) body.password = password;
+      
       const response = await fetch(`/api/users/${loginname}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role, is_active })
+        body: JSON.stringify(body)
       });
       const data = await response.json();
-      if (data.success) fetchUsers();
+      if (data.success) {
+        fetchUsers();
+        if (password) {
+          alert('เปลี่ยนรหัสผ่านเรียบร้อยแล้ว');
+          setShowPasswordModal(false);
+          setNewPassword('');
+          setEditingUser(null);
+        }
+      }
     } catch (error) {
       console.error('Failed to update user:', error);
     }
+  };
+
+  const handleChangePassword = (user: User) => {
+    setEditingUser(user);
+    setShowPasswordModal(true);
+  };
+
+  const handleSavePassword = async () => {
+    if (!editingUser || !newPassword) return;
+    setIsChangingPassword(true);
+    await handleUpdateUser(editingUser.loginname, editingUser.role, editingUser.is_active, newPassword);
+    setIsChangingPassword(false);
   };
 
   const handleDeleteUser = async (loginname: string) => {
@@ -215,11 +242,18 @@ export default function UserManagement() {
                       </td>
                       <td className="px-6 py-4 text-right space-x-2">
                         <button 
+                          onClick={() => handleChangePassword(user)}
+                          className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                          title="เปลี่ยนรหัสผ่าน"
+                        >
+                          <Lock className="w-4 h-4" />
+                        </button>
+                        <button 
                           onClick={() => handleEditAccess(user)}
                           className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                           title="จัดการสิทธิ์เข้าถึงใบงาน"
                         >
-                          <Lock className="w-4 h-4" />
+                          <Shield className="w-4 h-4" />
                         </button>
                         <button 
                           onClick={() => handleDeleteUser(user.loginname)}
@@ -337,6 +371,57 @@ export default function UserManagement() {
           )}
         </div>
       </div>
+
+      {/* Password Modal */}
+      {showPasswordModal && editingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Lock className="w-5 h-5 text-amber-600" />
+                เปลี่ยนรหัสผ่าน: {editingUser.name}
+              </h3>
+              <button 
+                onClick={() => setShowPasswordModal(false)}
+                className="p-2 hover:bg-slate-200 rounded-full transition-colors"
+              >
+                <XCircle className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+            
+            <div className="p-6">
+              <p className="text-sm text-slate-500 mb-4">กำหนดรหัสผ่านใหม่สำหรับผู้ใช้งานรายนี้ (ใช้สำหรับเข้าสู่ระบบ MRA โดยตรง)</p>
+              
+              <div className="mb-6">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">รหัสผ่านใหม่</label>
+                <input 
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="กรอกรหัสผ่านใหม่..."
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 outline-none"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setShowPasswordModal(false)}
+                  className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-all"
+                >
+                  ยกเลิก
+                </button>
+                <button 
+                  onClick={handleSavePassword}
+                  disabled={isChangingPassword || !newPassword}
+                  className="flex-1 py-3 bg-amber-600 text-white rounded-xl font-bold hover:bg-amber-700 disabled:opacity-50 shadow-lg shadow-amber-100 transition-all"
+                >
+                  {isChangingPassword ? 'กำลังบันทึก...' : 'บันทึกรหัสผ่าน'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

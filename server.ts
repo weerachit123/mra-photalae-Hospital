@@ -3,6 +3,7 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import fs from 'fs/promises';
 import mysql from 'mysql2/promise';
+import bcrypt from 'bcryptjs';
 
 // --- Database Configurations ---
 const CONFIG_FILE = path.join(process.cwd(), 'db_config.json');
@@ -254,6 +255,7 @@ async function startServer() {
             name VARCHAR(255) NOT NULL,
             department VARCHAR(255),
             role VARCHAR(20) DEFAULT 'user',
+            password VARCHAR(255),
             is_active BOOLEAN DEFAULT TRUE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           )
@@ -296,9 +298,12 @@ async function startServer() {
   app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
     const cleanUsername = username ? username.trim() : '';
+    
+    console.log(`Login attempt: ${cleanUsername}`);
 
     // Default Admin Bypass (For initial setup or emergency)
     if (cleanUsername.toLowerCase() === 'admin' && password === 'admin') {
+      console.log('Default admin bypass triggered');
       const adminUser = {
         loginname: 'admin',
         name: 'System Administrator',
@@ -322,8 +327,44 @@ async function startServer() {
     }
 
     try {
+      // 1. Check Local MRA Database first (for local-only users or overridden passwords)
+      if (mraPool) {
+        const [mraRows] = await mraPool.execute<mysql.RowDataPacket[]>(
+          'SELECT loginname, name, department, role, is_active, password FROM users WHERE LOWER(loginname) = ?',
+          [cleanUsername.toLowerCase()]
+        );
+
+        if (mraRows.length > 0) {
+          const localUser = mraRows[0];
+          console.log(`Found local user: ${localUser.loginname}, hasPassword: ${!!localUser.password}`);
+          
+          // If local user has a password set, check it
+          if (localUser.password) {
+            const isMatch = await bcrypt.compare(password, localUser.password);
+            console.log(`Local password match: ${isMatch}`);
+            
+            if (isMatch) {
+              if (!localUser.is_active) {
+                return res.status(403).json({ success: false, message: 'บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ' });
+              }
+
+              return res.json({ 
+                success: true, 
+                message: 'เข้าสู่ระบบสำเร็จ (Local)', 
+                user: {
+                  loginname: localUser.loginname,
+                  name: localUser.name,
+                  department: localUser.department,
+                  role: localUser.role
+                } 
+              });
+            }
+          }
+        }
+      }
+
       if (hosPool) {
-        // 1. Check Authentication in HosXP
+        // 2. Check Authentication in HosXP
         const [hosRows] = await hosPool.execute<mysql.RowDataPacket[]>(
           'SELECT loginname, name, department FROM opduser WHERE (loginname = ? OR loginname = ?) AND (password = MD5(?) OR password = MD5(UPPER(?))) AND (account_disable IS NULL OR account_disable <> "Y")',
           [cleanUsername, cleanUsername.toUpperCase(), password, password]
@@ -449,11 +490,12 @@ async function startServer() {
   // Add user to local system
   app.post('/api/users', async (req, res) => {
     if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
-    const { loginname, name, department, role } = req.body;
+    const { loginname, name, department, role, password } = req.body;
     try {
+      const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
       await mraPool.execute(
-        'INSERT INTO users (loginname, name, department, role) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=?, department=?, role=?',
-        [loginname, name, department, role, name, department, role]
+        'INSERT INTO users (loginname, name, department, role, password) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=?, department=?, role=?, password=COALESCE(?, password)',
+        [loginname, name, department, role, hashedPassword, name, department, role, hashedPassword]
       );
       res.json({ success: true, message: 'เพิ่มผู้ใช้งานเรียบร้อยแล้ว' });
     } catch (error: any) {
@@ -461,16 +503,33 @@ async function startServer() {
     }
   });
 
-  // Update user role/status
+  // Update user role/status/password
   app.put('/api/users/:loginname', async (req, res) => {
     if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
     const { loginname } = req.params;
-    const { role, is_active } = req.body;
+    const { role, is_active, password, name, department } = req.body;
     try {
-      await mraPool.execute(
-        'UPDATE users SET role = ?, is_active = ? WHERE loginname = ?',
-        [role, is_active, loginname]
-      );
+      let query = 'UPDATE users SET role = ?, is_active = ?';
+      let params: any[] = [role, is_active];
+
+      if (name) {
+        query += ', name = ?';
+        params.push(name);
+      }
+      if (department) {
+        query += ', department = ?';
+        params.push(department);
+      }
+      if (password) {
+        const hashedPassword = await bcrypt.hash(password, 10);
+        query += ', password = ?';
+        params.push(hashedPassword);
+      }
+
+      query += ' WHERE loginname = ?';
+      params.push(loginname);
+
+      await mraPool.execute(query, params);
       res.json({ success: true, message: 'อัปเดตข้อมูลผู้ใช้งานเรียบร้อยแล้ว' });
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });
