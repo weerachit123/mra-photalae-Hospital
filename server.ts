@@ -295,17 +295,43 @@ async function startServer() {
   // Login (Uses HOS Database for Auth, MRA Database for Permissions)
   app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
+    const cleanUsername = username ? username.trim() : '';
+
+    // Default Admin Bypass (For initial setup or emergency)
+    if (cleanUsername.toLowerCase() === 'admin' && password === 'admin') {
+      const adminUser = {
+        loginname: 'admin',
+        name: 'System Administrator',
+        department: 'IT',
+        role: 'admin'
+      };
+
+      // Ensure admin exists in MRA database if possible
+      if (mraPool) {
+        try {
+          await mraPool.execute(
+            'INSERT INTO users (loginname, name, department, role, is_active) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE role="admin", is_active=TRUE',
+            ['admin', 'System Administrator', 'IT', 'admin', true]
+          );
+        } catch (e) {
+          console.warn('Failed to sync default admin to MRA DB');
+        }
+      }
+
+      return res.json({ success: true, message: 'เข้าสู่ระบบด้วยสิทธิ์ผู้ดูแลระบบเริ่มต้น', user: adminUser });
+    }
 
     try {
       if (hosPool) {
         // 1. Check Authentication in HosXP
         const [hosRows] = await hosPool.execute<mysql.RowDataPacket[]>(
-          'SELECT loginname, name, department FROM opduser WHERE loginname = ? AND (password = MD5(?) OR password = MD5(UPPER(?))) AND (account_disable IS NULL OR account_disable <> "Y")',
-          [username, password, password]
+          'SELECT loginname, name, department FROM opduser WHERE (loginname = ? OR loginname = ?) AND (password = MD5(?) OR password = MD5(UPPER(?))) AND (account_disable IS NULL OR account_disable <> "Y")',
+          [cleanUsername, cleanUsername.toUpperCase(), password, password]
         );
 
         if (hosRows.length > 0) {
           const hosUser = hosRows[0];
+          const loginName = hosUser.loginname.toLowerCase();
           
           // 2. Check Permissions in MRA Database
           let userRole = 'user';
@@ -313,39 +339,51 @@ async function startServer() {
           let localUserFound = false;
 
           if (mraPool) {
-            const [mraRows] = await mraPool.execute<mysql.RowDataPacket[]>(
-              'SELECT role, is_active FROM users WHERE loginname = ?',
-              [username]
-            );
+            try {
+              const [mraRows] = await mraPool.execute<mysql.RowDataPacket[]>(
+                'SELECT role, is_active FROM users WHERE LOWER(loginname) = ?',
+                [loginName]
+              );
 
-            if (mraRows.length > 0) {
-              userRole = mraRows[0].role;
-              isActive = mraRows[0].is_active;
-              localUserFound = true;
+              if (mraRows.length > 0) {
+                userRole = mraRows[0].role;
+                isActive = mraRows[0].is_active;
+                localUserFound = true;
+              }
+            } catch (mraErr) {
+              console.warn('MRA User table check failed, might not be initialized yet');
             }
           }
 
           // Bootstrap Admins (always allowed if authenticated in HosXP)
           const bootstrapAdmins = ['0176', '0382', 'admin'];
-          if (bootstrapAdmins.includes(hosUser.loginname) || hosUser.department === 'IT') {
+          const isBootstrapAdmin = bootstrapAdmins.includes(loginName) || 
+                                   bootstrapAdmins.includes(cleanUsername.toLowerCase()) ||
+                                   hosUser.department === 'IT';
+
+          if (isBootstrapAdmin) {
             userRole = 'admin';
             isActive = true;
             
-            // Auto-create bootstrap admin in local users if not exists
-            if (mraPool && !localUserFound) {
-              await mraPool.execute(
-                'INSERT IGNORE INTO users (loginname, name, department, role) VALUES (?, ?, ?, ?)',
-                [hosUser.loginname, hosUser.name, hosUser.department, 'admin']
-              );
+            // Auto-create/update bootstrap admin in local users if possible
+            if (mraPool) {
+              try {
+                await mraPool.execute(
+                  'INSERT INTO users (loginname, name, department, role, is_active) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE role="admin", is_active=TRUE',
+                  [hosUser.loginname, hosUser.name, hosUser.department, 'admin', true]
+                );
+              } catch (e) {
+                // Ignore if table doesn't exist yet
+              }
             }
           }
 
-          if (!isActive && !bootstrapAdmins.includes(hosUser.loginname)) {
+          if (!isActive && !isBootstrapAdmin) {
             return res.status(403).json({ success: false, message: 'บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ' });
           }
 
           // If not a bootstrap admin and not in local users, they don't have access
-          if (!localUserFound && !bootstrapAdmins.includes(hosUser.loginname)) {
+          if (!localUserFound && !isBootstrapAdmin) {
             return res.status(403).json({ success: false, message: 'คุณไม่มีสิทธิ์เข้าใช้งานระบบนี้ กรุณาติดต่อผู้ดูแลระบบเพื่อเพิ่มชื่อผู้ใช้งาน' });
           }
 
@@ -364,10 +402,16 @@ async function startServer() {
         throw new Error('HOS Database pool is not initialized (Mock Mode)');
       }
     } catch (dbError) {
+      console.error('Login fallback to Mock Mode due to error:', dbError);
       return res.json({ 
         success: true, 
         message: 'เข้าสู่ระบบสำเร็จ (Mock Mode)', 
-        user: { name: username || 'Admin User', department: 'IT', role: 'admin' } 
+        user: { 
+          loginname: cleanUsername || 'admin',
+          name: cleanUsername || 'Admin User', 
+          department: 'IT', 
+          role: 'admin' 
+        } 
       });
     }
   });
