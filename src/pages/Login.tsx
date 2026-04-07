@@ -7,12 +7,14 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isSettingUp, setIsSettingUp] = useState(false);
   const [showDbSettings, setShowDbSettings] = useState(false);
   const [dbConfig, setDbConfig] = useState({
     host: '',
     user: 'root',
     password: '',
-    database: 'hos',
+    database: 'mra_audit',
+    hosDatabase: 'hos',
     port: '3306'
   });
 
@@ -21,14 +23,81 @@ export default function Login() {
   useEffect(() => {
     const savedConfig = localStorage.getItem('mra_db_config');
     if (savedConfig) {
-      setDbConfig(JSON.parse(savedConfig));
+      const parsed = JSON.parse(savedConfig);
+      setDbConfig({
+        ...parsed,
+        database: parsed.database || 'mra_audit',
+        hosDatabase: parsed.hosDatabase || 'hos'
+      });
     }
   }, []);
 
-  const handleSaveDbConfig = () => {
-    localStorage.setItem('mra_db_config', JSON.stringify(dbConfig));
-    setShowDbSettings(false);
-    alert('บันทึกการตั้งค่าฐานข้อมูลเรียบร้อยแล้ว');
+  const handleSaveDbConfig = async () => {
+    setLoading(true);
+    try {
+      // Save to local storage first
+      localStorage.setItem('mra_db_config', JSON.stringify(dbConfig));
+      
+      // 1. Setup MRA Database
+      const mraResponse = await fetch('/api/setup-mra-db', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: dbConfig }),
+      });
+      
+      // 2. Setup HOS Database
+      const hosResponse = await fetch('/api/setup-hos-db', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          config: {
+            host: dbConfig.host,
+            user: dbConfig.user,
+            password: dbConfig.password,
+            database: dbConfig.hosDatabase,
+            port: dbConfig.port
+          } 
+        }),
+      });
+      
+      const mraData = await mraResponse.json();
+      const hosData = await hosResponse.json();
+      
+      if (mraData.success && hosData.success) {
+        alert('เชื่อมต่อฐานข้อมูล HosXP และ MRA สำเร็จ!');
+        setShowDbSettings(false);
+      } else {
+        let msg = '';
+        if (!mraData.success) msg += `MRA Error: ${mraData.message}\n`;
+        if (!hosData.success) msg += `HosXP Error: ${hosData.message}`;
+        alert(msg);
+      }
+    } catch (err) {
+      alert('เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSetupDb = async () => {
+    setIsSettingUp(true);
+    try {
+      const response = await fetch('/api/setup-mra-db', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: dbConfig }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        alert('สร้างฐานข้อมูลและตารางเรียบร้อยแล้ว: ' + data.message);
+      } else {
+        alert('ไม่สามารถสร้างฐานข้อมูลได้:\n' + data.message + (data.error ? '\nCode: ' + data.error : ''));
+      }
+    } catch (err) {
+      alert('เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์\nกรุณาตรวจสอบว่าเซิร์ฟเวอร์กำลังทำงานอยู่');
+    } finally {
+      setIsSettingUp(false);
+    }
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -232,12 +301,22 @@ export default function Login() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Database Name</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">MRA Database Name (Audit)</label>
                   <input
                     type="text"
                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium text-sm"
                     value={dbConfig.database}
                     onChange={(e) => setDbConfig({...dbConfig, database: e.target.value})}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">HosXP Database Name (HIS)</label>
+                  <input
+                    type="text"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium text-sm"
+                    value={dbConfig.hosDatabase}
+                    onChange={(e) => setDbConfig({...dbConfig, hosDatabase: e.target.value})}
                   />
                 </div>
               </div>
@@ -248,14 +327,24 @@ export default function Login() {
             </div>
 
             <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
-              <Link 
-                to="/manual" 
-                target="_blank"
-                className="flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors"
-              >
-                <BookOpen className="w-3.5 h-3.5" />
-                ดูคู่มือการใช้งาน
-              </Link>
+              <div className="flex flex-col gap-2">
+                <Link 
+                  to="/manual" 
+                  target="_blank"
+                  className="flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors"
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  ดูคู่มือการใช้งาน
+                </Link>
+                <button
+                  onClick={handleSetupDb}
+                  disabled={isSettingUp}
+                  className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 hover:text-emerald-700 transition-colors disabled:opacity-50"
+                >
+                  <Database className="w-3 h-3" />
+                  {isSettingUp ? 'กำลังสร้าง...' : 'คลิกเพื่อสร้าง Database ใหม่'}
+                </button>
+              </div>
               <div className="flex gap-3">
                 <button 
                   onClick={() => setShowDbSettings(false)} 

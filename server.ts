@@ -5,11 +5,25 @@ import fs from 'fs/promises';
 import mysql from 'mysql2/promise';
 
 // --- Database Configurations ---
+const CONFIG_FILE = path.join(process.cwd(), 'db_config.json');
+
+async function getDbConfig() {
+  try {
+    const data = await fs.readFile(CONFIG_FILE, 'utf-8');
+    return JSON.parse(data);
+  } catch (e) {
+    return { hos: null, mra: null };
+  }
+}
+
+async function saveDbConfig(config: any) {
+  await fs.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2));
+}
 
 // HOS Database (HIS)
-const hosDbHost = process.env.HOS_DB_HOST || '192.168.0.5';
+let hosPool: mysql.Pool | null = null;
 const hosDbConfig = {
-  host: hosDbHost,
+  host: process.env.HOS_DB_HOST || '',
   user: process.env.HOS_DB_USER || 'root',
   password: process.env.HOS_DB_PASSWORD || '',
   database: process.env.HOS_DB_NAME || 'hos',
@@ -18,9 +32,9 @@ const hosDbConfig = {
 };
 
 // MRA Database (Audit)
-const mraDbHost = process.env.MRA_DB_HOST || '192.168.0.5';
+let mraPool: mysql.Pool | null = null;
 const mraDbConfig = {
-  host: mraDbHost,
+  host: process.env.MRA_DB_HOST || '',
   user: process.env.MRA_DB_USER || 'root',
   password: process.env.MRA_DB_PASSWORD || '',
   database: process.env.MRA_DB_NAME || 'mra_audit',
@@ -28,30 +42,60 @@ const mraDbConfig = {
   connectTimeout: 3000
 };
 
-const isLocalIP = (host: string) => host.startsWith('192.168.') || host.startsWith('10.') || host.startsWith('172.');
-
-let hosPool: mysql.Pool | null = null;
-let mraPool: mysql.Pool | null = null;
+// Initialize Pools from persisted config or env
+async function initAllPools() {
+  const savedConfig = await getDbConfig();
+  
+  if (savedConfig.hos) {
+    await initHosPool(savedConfig.hos);
+  } else if (hosDbConfig.host) {
+    await initHosPool(hosDbConfig);
+  }
+  
+  if (savedConfig.mra) {
+    await initMraPool(savedConfig.mra);
+  } else if (mraDbConfig.host) {
+    await initMraPool(mraDbConfig);
+  }
+}
 
 // Initialize HOS Pool
-if (!isLocalIP(hosDbHost) || process.env.FORCE_DB_CONNECT === 'true') {
+async function initHosPool(config = hosDbConfig) {
+  if (!config.host) {
+    hosPool = null;
+    return false;
+  }
   try {
-    hosPool = mysql.createPool(hosDbConfig);
-    console.log('HOS MySQL pool created');
+    if (hosPool) await hosPool.end();
+    hosPool = mysql.createPool(config);
+    console.log('HOS MySQL pool initialized');
+    return true;
   } catch (e) {
-    console.error('Failed to create HOS MySQL pool:', e);
+    console.error('Failed to initialize HOS MySQL pool:', e);
+    hosPool = null;
+    return false;
   }
 }
 
 // Initialize MRA Pool
-if (!isLocalIP(mraDbHost) || process.env.FORCE_DB_CONNECT === 'true') {
+async function initMraPool(config = mraDbConfig) {
+  if (!config.host) {
+    mraPool = null;
+    return false;
+  }
   try {
-    mraPool = mysql.createPool(mraDbConfig);
-    console.log('MRA MySQL pool created');
+    if (mraPool) await mraPool.end();
+    mraPool = mysql.createPool(config);
+    console.log('MRA MySQL pool initialized');
+    return true;
   } catch (e) {
-    console.error('Failed to create MRA MySQL pool:', e);
+    console.error('Failed to initialize MRA MySQL pool:', e);
+    mraPool = null;
+    return false;
   }
 }
+
+initAllPools();
 
 // --- JSON Fallback Database (For MRA) ---
 const MRA_JSON_FILE = path.join(process.cwd(), 'mra_data.json');
@@ -77,15 +121,85 @@ async function startServer() {
 
   // --- API Routes ---
 
-  // Database Setup (Create MRA tables if they don't exist)
-  app.post('/api/setup-mra-db', async (req, res) => {
-    if (!mraPool) {
-      // If no pool, just ensure the JSON file exists
-      await getJsonData();
-      return res.json({ success: true, message: 'MRA JSON Fallback initialized (No MySQL connection)' });
-    }
+  // HOS Database Setup
+  app.post('/api/setup-hos-db', async (req, res) => {
+    const config = req.body.config;
+    if (!config) return res.status(400).json({ success: false, message: 'Config is required' });
     
     try {
+      const success = await initHosPool({
+        host: config.host,
+        user: config.user,
+        password: config.password,
+        database: config.database || 'hos',
+        port: parseInt(config.port || '3306'),
+        connectTimeout: 10000
+      });
+      
+      if (success) {
+        // Test connection
+        const connection = await hosPool!.getConnection();
+        connection.release();
+        
+        // Save config
+        const savedConfig = await getDbConfig();
+        savedConfig.hos = {
+          host: config.host,
+          user: config.user,
+          password: config.password,
+          database: config.database || 'hos',
+          port: parseInt(config.port || '3306'),
+          connectTimeout: 10000
+        };
+        await saveDbConfig(savedConfig);
+        
+        res.json({ success: true, message: 'HosXP Database connected successfully' });
+      } else {
+        throw new Error('Failed to create pool');
+      }
+    } catch (error: any) {
+      console.error('Setup HOS DB failed:', error);
+      res.status(500).json({ success: false, message: 'Failed to connect HosXP: ' + error.message });
+    }
+  });
+
+  // Database Setup (Create MRA database and tables)
+  app.post('/api/setup-mra-db', async (req, res) => {
+    const config = req.body.config || mraDbConfig;
+    
+    try {
+      // 1. Try to create the database first (Connect without database name)
+      const connectionConfig = {
+        host: config.host,
+        user: config.user,
+        password: config.password,
+        port: parseInt(config.port || '3306'),
+        connectTimeout: 10000 // Increased timeout
+      };
+      
+      let tempConn;
+      try {
+        tempConn = await mysql.createConnection(connectionConfig);
+      } catch (connError: any) {
+        if (connError.code === 'ETIMEDOUT') {
+          throw new Error(`ไม่สามารถเชื่อมต่อกับ MySQL ที่ ${config.host}:${config.port} ได้ (Timeout) กรุณาตรวจสอบว่า IP ถูกต้องและเปิด Firewall แล้ว`);
+        }
+        if (connError.code === 'ECONNREFUSED') {
+          throw new Error(`การเชื่อมต่อถูกปฏิเสธ (Connection Refused) กรุณาตรวจสอบว่า MySQL กำลังรันอยู่และอนุญาตการเชื่อมต่อจากภายนอก`);
+        }
+        throw connError;
+      }
+      
+      await tempConn.query(`CREATE DATABASE IF NOT EXISTS \`${config.database || 'mra_audit'}\` CHARACTER SET utf8 COLLATE utf8_general_ci`);
+      await tempConn.end();
+      
+      // 2. Re-initialize MRA Pool with the correct database
+      if (mraPool) await mraPool.end();
+      mraPool = mysql.createPool({
+        ...connectionConfig,
+        database: config.database || 'mra_audit'
+      });
+      
       const connection = await mraPool.getConnection();
       try {
         await connection.query(`
@@ -104,6 +218,7 @@ async function startServer() {
             worksheet_id VARCHAR(50) NOT NULL,
             hn VARCHAR(20) NOT NULL,
             an VARCHAR(20),
+            vn VARCHAR(20),
             status VARCHAR(50) DEFAULT 'pending',
             doctor_name VARCHAR(255),
             regdate DATE,
@@ -133,13 +248,25 @@ async function startServer() {
           )
         `);
         
-        res.json({ success: true, message: 'MRA Database tables initialized' });
+        // Save config
+        const savedConfig = await getDbConfig();
+        savedConfig.mra = {
+          ...connectionConfig,
+          database: config.database || 'mra_audit'
+        };
+        await saveDbConfig(savedConfig);
+        
+        res.json({ success: true, message: 'MRA Database and tables initialized successfully' });
       } finally {
         connection.release();
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Setup MRA DB failed:', error);
-      res.status(500).json({ success: false, message: 'Failed to setup MRA database' });
+      res.status(500).json({ 
+        success: false, 
+        message: 'Failed to setup MRA database: ' + error.message,
+        error: error.code
+      });
     }
   });
 
@@ -156,8 +283,9 @@ async function startServer() {
 
         if (rows.length > 0) {
           const user = rows[0];
-          // Simple role assignment: IT department or specific names are admins
-          if (user.department === 'IT' || user.loginname === 'admin' || user.name === 'Admin User') {
+          // Simple role assignment: IT department or specific names/IDs are admins
+          const adminIds = ['0176', '0382', 'admin'];
+          if (user.department === 'IT' || adminIds.includes(user.loginname) || user.name === 'Admin User') {
             user.role = 'admin';
           } else {
             user.role = 'user';
@@ -251,9 +379,13 @@ async function startServer() {
   // --- MRA Persistence Endpoints (Uses MRA Database) ---
 
   app.get('/api/mra/worksheets', async (req, res) => {
-    if (!mraPool) {
+    const fetchFromJson = async () => {
       const data = await getJsonData();
       return res.json({ success: true, data: data.worksheets, mock: true });
+    };
+
+    if (!mraPool) {
+      return await fetchFromJson();
     }
     
     try {
@@ -265,17 +397,22 @@ async function startServer() {
       }
       
       res.json({ success: true, data: worksheets });
-    } catch (error) {
-      res.status(500).json({ success: false, message: 'Failed to fetch worksheets' });
+    } catch (error: any) {
+      console.warn('Failed to fetch worksheets from DB, falling back to JSON:', error.message);
+      return await fetchFromJson();
     }
   });
 
   app.get('/api/mra/worksheets/:id', async (req, res) => {
-    if (!mraPool) {
+    const fetchFromJson = async () => {
       const data = await getJsonData();
       const ws = data.worksheets.find((w: any) => w.id === req.params.id);
       if (!ws) return res.status(404).json({ success: false, message: 'Worksheet not found' });
       return res.json({ success: true, data: ws, mock: true });
+    };
+
+    if (!mraPool) {
+      return await fetchFromJson();
     }
     
     try {
@@ -296,13 +433,14 @@ async function startServer() {
       
       ws.cases = cases;
       res.json({ success: true, data: ws });
-    } catch (error) {
-      res.status(500).json({ success: false, message: 'Failed to fetch worksheet details' });
+    } catch (error: any) {
+      console.warn('Failed to fetch worksheet details from DB, falling back to JSON:', error.message);
+      return await fetchFromJson();
     }
   });
 
   app.post('/api/mra/worksheets/:wsId/audit', async (req, res) => {
-    if (!mraPool) {
+    const saveToJson = async () => {
       const data = await getJsonData();
       const { wsId } = req.params;
       const { hn, an, scores, reasons, status } = req.body;
@@ -322,6 +460,10 @@ async function startServer() {
       
       await saveJsonData(data);
       return res.json({ success: true, mock: true });
+    };
+
+    if (!mraPool) {
+      return await saveToJson();
     }
     
     const { hn, an, scores, reasons, status, remarks } = req.body;
@@ -370,14 +512,14 @@ async function startServer() {
       } finally {
         connection.release();
       }
-    } catch (error) {
-      console.error('Save audit failed:', error);
-      res.status(500).json({ success: false, message: 'Failed to save audit data' });
+    } catch (error: any) {
+      console.warn('Save audit to DB failed, falling back to JSON:', error.message);
+      return await saveToJson();
     }
   });
 
   app.post('/api/mra/worksheets', async (req, res) => {
-    if (!mraPool) {
+    const saveToJson = async () => {
       const data = await getJsonData();
       const newWs = req.body;
       const index = data.worksheets.findIndex((w: any) => w.id === newWs.id);
@@ -388,6 +530,10 @@ async function startServer() {
       }
       await saveJsonData(data);
       return res.json({ success: true, mock: true });
+    };
+
+    if (!mraPool) {
+      return await saveToJson();
     }
     
     const { id, name, type, department, cases } = req.body;
@@ -402,14 +548,12 @@ async function startServer() {
           [id, name, type, department, name, type, department]
         );
         
-        // For updates, we might want to be careful not to delete audit data if we're just refreshing cases
-        // But for now, let's follow the simple logic
         await connection.query('DELETE FROM audit_cases WHERE worksheet_id = ?', [id]);
         
         for (const c of cases) {
           await connection.query(
-            'INSERT INTO audit_cases (worksheet_id, hn, an, status, doctor_name, regdate, dchdate, vstdate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            [id, c.hn, c.an || null, c.status || 'pending', c.doctor_name, c.regdate || null, c.dchdate || null, c.vstdate || null]
+            'INSERT INTO audit_cases (worksheet_id, hn, an, vn, status, doctor_name, regdate, dchdate, vstdate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [id, c.hn, c.an || null, c.vn || null, c.status || 'pending', c.doctor_name, c.regdate || null, c.dchdate || null, c.vstdate || null]
           );
         }
         
@@ -421,23 +565,29 @@ async function startServer() {
       } finally {
         connection.release();
       }
-    } catch (error) {
-      res.status(500).json({ success: false, message: 'Failed to save worksheet' });
+    } catch (error: any) {
+      console.warn('Failed to save worksheet to DB, falling back to JSON:', error.message);
+      return await saveToJson();
     }
   });
 
   app.delete('/api/mra/worksheets/:id', async (req, res) => {
-    if (!mraPool) {
+    const deleteFromJson = async () => {
       const data = await getJsonData();
       data.worksheets = data.worksheets.filter((w: any) => w.id !== req.params.id);
       await saveJsonData(data);
       return res.json({ success: true, mock: true });
+    };
+
+    if (!mraPool) {
+      return await deleteFromJson();
     }
     try {
       await mraPool.query('DELETE FROM worksheets WHERE id = ?', [req.params.id]);
       res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ success: false, message: 'Failed to delete worksheet' });
+    } catch (error: any) {
+      console.warn('Failed to delete worksheet from DB, falling back to JSON:', error.message);
+      return await deleteFromJson();
     }
   });
 

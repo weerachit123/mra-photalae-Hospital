@@ -14,6 +14,10 @@ interface Worksheet {
 export default function WorksheetList() {
   const [worksheets, setWorksheets] = useState<Worksheet[]>([]);
   const [activeTab, setActiveTab] = useState<'ALL' | 'OPD' | 'IPD'>('ALL');
+  const userStr = localStorage.getItem('user');
+  const user = userStr ? JSON.parse(userStr) : null;
+
+  const isAdmin = user?.role === 'admin' || user?.loginname === '0176' || user?.loginname === '0382';
 
   useEffect(() => {
     const fetchWorksheets = async () => {
@@ -56,9 +60,22 @@ export default function WorksheetList() {
     }
   };
 
-  const filteredWorksheets = activeTab === 'ALL' 
+  // Permission logic: Admins see all, others see only their department's worksheets
+  const permittedWorksheets = isAdmin 
     ? worksheets 
-    : worksheets.filter(ws => ws.type === activeTab);
+    : worksheets.filter(ws => {
+        // If user has no department, they see nothing (or maybe they should see everything? No, restrict by default)
+        if (!user?.department) return false;
+        
+        // Match by department name (since worksheet stores name)
+        // Or if user.department is a code, we might need a mapping.
+        // For now, we'll assume user.department might contain the name or code.
+        return ws.department.includes(user.department) || user.department.includes(ws.department);
+      });
+
+  const filteredWorksheets = activeTab === 'ALL' 
+    ? permittedWorksheets 
+    : permittedWorksheets.filter(ws => ws.type === activeTab);
 
   // Group by name (Round)
   const groupedWorksheets = filteredWorksheets.reduce((acc, ws) => {
@@ -83,23 +100,6 @@ export default function WorksheetList() {
             <p className="mt-1 text-sm text-slate-500 font-medium">
               เลือกใบงานที่ต้องการเพื่อเริ่มทำการประเมินเวชระเบียน
             </p>
-          </div>
-          
-          <div className="flex flex-wrap gap-4">
-            <Link 
-              to="/dashboard/audit-opd"
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md shadow-blue-100 transition-all active:scale-95 flex items-center gap-2"
-            >
-              <FileText className="w-4 h-4" />
-              สร้างใบงาน OPD
-            </Link>
-            <Link 
-              to="/dashboard/audit-ipd"
-              className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md shadow-emerald-100 transition-all active:scale-95 flex items-center gap-2"
-            >
-              <FileText className="w-4 h-4" />
-              สร้างใบงาน IPD
-            </Link>
           </div>
           
           <div className="flex bg-slate-100 p-1.5 rounded-xl border border-slate-200">

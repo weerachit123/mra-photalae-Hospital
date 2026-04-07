@@ -16,16 +16,18 @@ export default function WorksheetDetail() {
   const navigate = useNavigate();
   const [worksheet, setWorksheet] = useState<Worksheet | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
     // Check admin role from localStorage
-    const userJson = localStorage.getItem('mra_user');
+    const userJson = localStorage.getItem('user');
     if (userJson) {
-      const user = JSON.parse(userJson);
-      setIsAdmin(user.role === 'admin');
+      const u = JSON.parse(userJson);
+      setUser(u);
+      const isAdm = u.role === 'admin' || u.loginname === '0176' || u.loginname === '0382';
+      setIsAdmin(isAdm);
     } else {
-      // Fallback for dev/testing if no user object exists
-      setIsAdmin(true); 
+      navigate('/');
     }
 
     const fetchWorksheet = async () => {
@@ -50,7 +52,21 @@ export default function WorksheetDetail() {
     };
 
     fetchWorksheet();
-  }, [id]);
+  }, [id, navigate]);
+
+  // Permission check after worksheet is loaded
+  useEffect(() => {
+    if (worksheet && user) {
+      const isAdm = user.role === 'admin' || user.loginname === '0176' || user.loginname === '0382';
+      if (!isAdm) {
+        const hasAccess = worksheet.department.includes(user.department) || user.department.includes(worksheet.department);
+        if (!hasAccess) {
+          alert('คุณไม่มีสิทธิ์เข้าถึงใบงานของแผนกนี้');
+          navigate('/dashboard/worksheets');
+        }
+      }
+    }
+  }, [worksheet, user, navigate]);
 
   const refreshCase = async (index: number) => {
     if (!worksheet) return;

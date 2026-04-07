@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Download, CheckCircle2, AlertCircle, Info, LogIn, ClipboardList, Printer, Settings } from 'lucide-react';
+import { FileText, Download, CheckCircle2, AlertCircle, Info, LogIn, ClipboardList, Printer, Settings, Server, LayoutDashboard } from 'lucide-react';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
@@ -157,7 +157,55 @@ export default function UserManual() {
         </div>
       </section>
 
-      {/* Section 4: Troubleshooting */}
+      {/* Section 4: Installation for IT */}
+      <section className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
+            <Server className="w-6 h-6" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-800">4. สำหรับเจ้าหน้าที่ IT (การติดตั้งบนเซิร์ฟเวอร์)</h2>
+        </div>
+        <div className="space-y-4 text-slate-600 text-sm leading-relaxed">
+          <p>หากต้องการนำระบบไปรันบนเซิร์ฟเวอร์ของโรงพยาบาลเอง ให้ดำเนินการดังนี้:</p>
+          <ol className="list-decimal ml-5 space-y-2">
+            <li>ติดตั้ง <strong>Node.js</strong> (เวอร์ชัน 18 ขึ้นไป) บนเครื่องเซิร์ฟเวอร์</li>
+            <li>ดาวน์โหลดไฟล์โปรเจกต์ (Export ZIP) จากระบบ AI Studio</li>
+            <li>แตกไฟล์ ZIP และเปิด Command Prompt ในโฟลเดอร์นั้น</li>
+            <li>พิมพ์คำสั่ง <code>npm install</code> เพื่อติดตั้งไลบรารีที่จำเป็น</li>
+            <li>สร้างไฟล์ <code>.env</code> เพื่อตั้งค่าการเชื่อมต่อฐานข้อมูล (Host, User, Password)</li>
+            <li>พิมพ์คำสั่ง <code>npm run build</code> และตามด้วย <code>npm start</code></li>
+          </ol>
+        </div>
+      </section>
+
+      {/* Section 5: Desktop Shortcut */}
+      <section className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 bg-purple-50 rounded-xl flex items-center justify-center text-purple-600">
+            <LayoutDashboard className="w-6 h-6" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-800">5. วิธีสร้างไอคอนไว้บนหน้าจอ (Desktop Shortcut)</h2>
+        </div>
+        <p className="text-slate-600 text-sm mb-4">เพื่อให้เข้าใช้งานได้ง่ายเหมือนโปรแกรมทั่วไป ให้ทำดังนี้:</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+            <p className="font-bold text-slate-700 mb-1">สำหรับ Google Chrome</p>
+            <p className="text-xs text-slate-500">1. เปิดหน้าเว็บระบบ MRA</p>
+            <p className="text-xs text-slate-500">2. กดจุด 3 จุดที่มุมขวาบน</p>
+            <p className="text-xs text-slate-500">3. เลือก "เครื่องมือเพิ่มเติม" (More Tools)</p>
+            <p className="text-xs text-slate-500">4. เลือก "สร้างทางลัด..." (Create Shortcut)</p>
+          </div>
+          <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+            <p className="font-bold text-slate-700 mb-1">สำหรับ Microsoft Edge</p>
+            <p className="text-xs text-slate-500">1. เปิดหน้าเว็บระบบ MRA</p>
+            <p className="text-xs text-slate-500">2. กดจุด 3 จุดที่มุมขวาบน</p>
+            <p className="text-xs text-slate-500">3. เลือก "แอป" (Apps)</p>
+            <p className="text-xs text-slate-500">4. เลือก "ติดตั้งไซต์นี้เป็นแอป" (Install this site as an app)</p>
+          </div>
+        </div>
+      </section>
+
+      {/* Section 6: Troubleshooting */}
       <section className="bg-red-50 p-8 rounded-2xl border border-red-100">
         <div className="flex items-center gap-3 mb-4">
           <AlertCircle className="w-6 h-6 text-red-600" />

@@ -128,6 +128,15 @@ export default function AuditFormOPD() {
   useEffect(() => {
     setOpdCriteria(getOPDCriteria());
     
+    // Check permission
+    const userJson = localStorage.getItem('user');
+    const user = userJson ? JSON.parse(userJson) : null;
+    if (!user) {
+      navigate('/');
+      return;
+    }
+    const isAdmin = user.role === 'admin' || user.loginname === '0176' || user.loginname === '0382';
+
     // Fetch current worksheet state from API
     const fetchWorksheet = async () => {
       const searchParams = new URLSearchParams(location.search);
@@ -138,7 +147,19 @@ export default function AuditFormOPD() {
         const response = await fetch(`/api/mra/worksheets/${wsId}`);
         const data = await response.json();
         if (data.success) {
-          const currentCase = data.data.cases.find((c: any) => c.hn === hn);
+          const worksheet = data.data;
+          
+          // Permission check: Admins see all, others see only their department's worksheets
+          if (!isAdmin) {
+            const hasAccess = worksheet.department.includes(user.department) || user.department.includes(worksheet.department);
+            if (!hasAccess) {
+              alert('คุณไม่มีสิทธิ์เข้าถึงใบงานของแผนกนี้');
+              navigate('/dashboard/worksheets');
+              return;
+            }
+          }
+
+          const currentCase = worksheet.cases.find((c: any) => c.hn === hn);
           if (currentCase && currentCase.status === 'audited') {
             if (currentCase.scores) setScores(currentCase.scores);
             if (currentCase.reasons) setCaseReasons(currentCase.reasons);
@@ -161,7 +182,7 @@ export default function AuditFormOPD() {
     };
 
     fetchWorksheet();
-  }, [hn, location.search]);
+  }, [hn, location.search, navigate]);
 
   const toggleScore = (rowId: string, colIdx: number | string, defaultVal: string) => {
     if (defaultVal === '-') return; // Disabled
@@ -169,9 +190,12 @@ export default function AuditFormOPD() {
     const key = `${rowId}_${colIdx}`;
     const current = scores[key] || defaultVal;
     
-    // Toggle logic: 1 -> 0 -> N -> 1
+    // Toggle logic: 1 -> N -> 0 -> 1
     let next = '1';
     if (current === '1') {
+      next = 'N';
+    }
+    else if (current === 'N') {
       next = '0';
       // Trigger reason modal for score 0
       const row = ROWS.find(r => r.id === rowId);
@@ -181,8 +205,7 @@ export default function AuditFormOPD() {
         name: `${row?.name} (ข้อ ${Number(colIdx) + 1})`
       });
     }
-    else if (current === '0') next = 'N';
-    else if (current === 'N') next = '1';
+    else if (current === '0') next = '1';
 
     setScores(prev => ({ ...prev, [key]: next }));
   };

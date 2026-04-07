@@ -95,11 +95,11 @@ const DEFAULT_IPD_CRITERIA: Record<string, string[]> = {
   '4': ['CC', 'PI', 'PH', 'FH', 'Allergy', 'Menstruation', 'Smoking/Alcohol', 'ลงลายมือชื่อแพทย์', 'วันที่/เวลา'],
   '5': ['V/S (BP, PR, RR, T)', 'BW / Height', 'General Appearance', 'Systemic Exam', 'Pain Score', 'Neuro sign', 'อื่นๆ', 'ลงลายมือชื่อแพทย์', 'วันที่/เวลา'],
   '6': ['Date/Time', 'Subjective', 'Objective', 'Assessment', 'Plan', 'ลงลายมือชื่อแพทย์', '', '', ''],
-  '7': ['', '', '', '', '', '', '', '', ''],
-  '8': ['', '', '', '', '', '', '', '', ''],
-  '9': ['', '', '', '', '', '', '', '', ''],
-  '10': ['', '', '', '', '', '', '', '', ''],
-  '11': ['', '', '', '', '', '', '', '', ''],
+  '7': ['Consultation Date', 'Consultant Name', 'Reason for Consult', 'Findings', 'Recommendations', 'Signature', '', '', ''],
+  '8': ['Pre-anes eval', 'Anes technique', 'Monitoring', 'Medications', 'Fluid/Blood', 'Recovery note', 'Signature', '', ''],
+  '9': ['Pre-op Dx', 'Post-op Dx', 'Procedure Name', 'Surgeon/Assistant', 'Findings', 'Procedure Details', 'Specimen', 'Signature', ''],
+  '10': ['Labour stage 1', 'Labour stage 2', 'Labour stage 3', 'Fetal monitoring', 'Maternal monitoring', 'Delivery note', 'Newborn status', 'Signature', ''],
+  '11': ['Problem list', 'Goal of treatment', 'Modality', 'Progress note', 'Evaluation', 'Signature', '', '', ''],
   '12': ['Date/Time', 'Focus/Problem', 'Data/Action', 'Response', 'ลงลายมือชื่อพยาบาล', '', '', '', ''],
 };
 

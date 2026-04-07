@@ -18,18 +18,17 @@ export default function DashboardLayout() {
     return null;
   }
 
-  const isAdmin = user.role === 'admin' || user.name === 'Admin User';
+  const isAdmin = user.role === 'admin' || user.name === 'Admin User' || user.loginname === '0176' || user.loginname === '0382';
 
   const menuItems = [
     { path: '/dashboard/stats', label: 'Dashboard สรุปผล', icon: LayoutDashboard },
     { path: '/dashboard/report', label: 'รายงานละเอียด', icon: FileText },
     { path: '/dashboard/worksheets', label: 'รายการใบงาน', icon: ClipboardList },
-    { path: '/dashboard/audit-opd', label: 'Audit OPD (สร้างใบงาน)', icon: ClipboardCheck },
-    { path: '/dashboard/audit-ipd', label: 'Audit IPD (สร้างใบงาน)', icon: ClipboardCheck },
-    { path: '/dashboard/manual', label: 'คู่มือการใช้งาน', icon: BookOpen },
   ];
 
   const adminItems = [
+    { path: '/dashboard/audit-opd', label: 'Audit OPD (สร้างใบงาน)', icon: ClipboardCheck },
+    { path: '/dashboard/audit-ipd', label: 'Audit IPD (สร้างใบงาน)', icon: ClipboardCheck },
     { path: '/dashboard/memorandum', label: 'ปริ้นสรุป เสนอเซ็น', icon: Printer },
     { path: '/dashboard/edit-criteria', label: 'ตั้งค่าเกณฑ์ประเมิน', icon: Settings },
   ];
