@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Printer, FileSpreadsheet, FileText, Calendar, Users, 
   ChevronDown, ChevronUp, LayoutDashboard, FileBarChart
@@ -6,6 +6,9 @@ import {
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+// @ts-ignore
+import html2pdf from 'html2pdf.js';
+import { getOPDCriteria, getIPDCriteria } from './EditCriteria';
 
 // Criteria Definitions (must match audit forms)
 const OPD_ROWS = [
@@ -51,6 +54,7 @@ interface Worksheet {
   type: 'OPD' | 'IPD';
   department: string;
   createdAt: string;
+  criteria_year?: string;
   cases: Case[];
 }
 
@@ -118,6 +122,8 @@ export default function DetailedReport() {
     });
     return Array.from(docSet).sort();
   }, [worksheets, reportType, selectedYear]);
+
+  const reportTypeRef = useRef<HTMLDivElement>(null);
 
   const filteredWorksheets = useMemo(() => {
     return worksheets.filter(w => {
@@ -204,6 +210,59 @@ export default function DetailedReport() {
 
   const overallMatrix = useMemo(() => calculateMatrix(filteredWorksheets), [filteredWorksheets, reportType]);
 
+  const problemsSummary = useMemo(() => {
+    const summary: Record<string, { 
+      criteriaText: string; 
+      count: number; 
+      notes: Set<string>;
+      rowId: string;
+      colIdx: number;
+    }> = {};
+
+    // Use criteria for the selected year or default to 2557
+    const yearForCriteria = selectedYear === 'all' ? '2557' : selectedYear;
+    const opdCriteriaMap = getOPDCriteria(yearForCriteria);
+    const ipdCriteriaMap = getIPDCriteria(yearForCriteria);
+    const currentCriteriaMap = reportType === 'OPD' ? opdCriteriaMap : ipdCriteriaMap;
+
+    filteredWorksheets.forEach(ws => {
+      ws.cases.forEach(c => {
+        const matchDoctor = selectedDoctor === 'all' || c.doctor_name === selectedDoctor;
+        if (c.status === 'audited' && c.scores && matchDoctor) {
+          Object.entries(c.scores).forEach(([key, val]) => {
+            if (val === '0') {
+              const [rowId, colIdxStr] = key.split('_');
+              const colIdx = parseInt(colIdxStr);
+              
+              if (!isNaN(colIdx)) {
+                const summaryKey = `${rowId}_${colIdx}`;
+                if (!summary[summaryKey]) {
+                  const criteriaList = currentCriteriaMap[rowId] || [];
+                  const criteriaText = criteriaList[colIdx] || `เกณฑ์หัวข้อที่ ${rowId} ข้อที่ ${colIdx + 1}`;
+                  summary[summaryKey] = {
+                    criteriaText,
+                    count: 0,
+                    notes: new Set(),
+                    rowId,
+                    colIdx
+                  };
+                }
+                summary[summaryKey].count++;
+                const note = c.reasons?.[key];
+                if (note) summary[summaryKey].notes.add(note);
+              }
+            }
+          });
+        }
+      });
+    });
+
+    return Object.values(summary).sort((a, b) => {
+      if (a.rowId !== b.rowId) return a.rowId.localeCompare(b.rowId, undefined, { numeric: true });
+      return a.colIdx - b.colIdx;
+    });
+  }, [filteredWorksheets, reportType, selectedDoctor, selectedYear]);
+
   const deptMatrices = useMemo(() => {
     const matrices: Record<string, any> = {};
     departments.forEach(dept => {
@@ -234,6 +293,17 @@ export default function DetailedReport() {
       });
       const wsOverall = XLSX.utils.json_to_sheet(overallData);
       XLSX.utils.book_append_sheet(wb, wsOverall, 'ภาพรวม');
+
+      // Problems Summary Sheet
+      if (problemsSummary.length > 0) {
+        const probData = problemsSummary.map(p => ({
+          'เกณฑ์': `หัวข้อที่ ${p.rowId} ข้อที่ ${p.colIdx + 1}: ${p.criteriaText}`,
+          'ความถี่ (0 คะแนน)': p.count,
+          'สรุปข้อความ note': Array.from(p.notes).join(', ')
+        }));
+        const wsProb = XLSX.utils.json_to_sheet(probData);
+        XLSX.utils.book_append_sheet(wb, wsProb, 'สรุปปัญหาที่พบ');
+      }
 
       // Dept Sheets
       departments.forEach((dept, index) => {
@@ -274,41 +344,22 @@ export default function DetailedReport() {
   };
 
   const handlePDF = () => {
-    try {
-      const doc = new jsPDF('l', 'mm', 'a4');
-      const rows = reportType === 'OPD' ? OPD_ROWS : IPD_ROWS;
-      
-      doc.setFont('helvetica', 'bold');
-      doc.text(`Medical Record Audit Detailed Report (${reportType})`, 14, 15);
-      doc.setFontSize(10);
-      doc.text(`Round: ${selectedRound}`, 14, 22);
+    const element = reportTypeRef.current;
+    if (!element) return;
 
-      const headers = ['Criteria', ...Array.from({ length: overallMatrix.maxCols }, (_, i) => `Item ${i + 1}`), 'Full', 'Earned', '%'];
-      const body = rows.map(r => [
-        r.name,
-        ...overallMatrix.counts[r.id].map(v => v.toString()),
-        ...new Array(overallMatrix.maxCols - r.cols).fill('-'),
-        overallMatrix.totals[r.id].reduce((a, b) => a + b, 0).toString(),
-        (overallMatrix.counts[r.id].reduce((a, b) => a + b, 0) + overallMatrix.bonusCounts[r.id] - overallMatrix.deductCounts[r.id]).toString(),
-        (overallMatrix.totals[r.id].reduce((a, b) => a + b, 0) > 0 
-          ? ((overallMatrix.counts[r.id].reduce((a, b) => a + b, 0) + overallMatrix.bonusCounts[r.id] - overallMatrix.deductCounts[r.id]) / overallMatrix.totals[r.id].reduce((a, b) => a + b, 0) * 100).toFixed(1) 
-          : '0.0') + '%'
-      ]);
+    const opt = {
+      margin: 10,
+      filename: `MRA_Detailed_Report_${reportType}_${new Date().toISOString().split('T')[0]}.pdf`,
+      image: { type: 'jpeg' as const, quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, logging: false },
+      jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'landscape' as const },
+      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] as any }
+    };
 
-      autoTable(doc, {
-        startY: 30,
-        head: [headers],
-        body: body,
-        theme: 'grid',
-        styles: { fontSize: 7, cellPadding: 2 },
-        headStyles: { fillColor: [59, 130, 246] }
-      });
-
-      doc.save(`MRA_Detailed_Report_${reportType}_${new Date().toISOString().split('T')[0]}.pdf`);
-    } catch (error) {
-      console.error('PDF export failed:', error);
-      alert('เกิดข้อผิดพลาดในการส่งออก PDF: ' + (error as Error).message);
-    }
+    // Temporarily hide elements with 'print:hidden' class if needed, 
+    // but html2pdf usually captures the DOM as is.
+    // We can use a clone or just target the ref.
+    html2pdf().set(opt).from(element).save();
   };
 
   const renderMatrixTable = (title: string, matrix: any, subTitle?: string) => {
@@ -317,7 +368,7 @@ export default function DetailedReport() {
 
     return (
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-8 break-inside-avoid">
-        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+        <div className="px-6 py-4 border-b border-slate-100" style={{ backgroundColor: '#f8fafc' }}>
           <h3 className="text-sm font-black text-slate-800">{title}</h3>
           {subTitle && <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{subTitle}</p>}
         </div>
@@ -405,6 +456,55 @@ export default function DetailedReport() {
               </table>
             </div>
           </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderProblemsSummary = () => {
+    if (problemsSummary.length === 0) return null;
+
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-8 break-inside-avoid">
+        <div className="px-6 py-4 border-b border-slate-100" style={{ backgroundColor: '#fef2f2' }}>
+          <h3 className="text-sm font-black text-red-800">ปัญหาการตรวจสอบเวชระเบียน (สรุปข้อที่ได้ 0 คะแนน)</h3>
+          <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest mt-1">แสดงเฉพาะรายการที่มีการระบุเหตุผลหรือได้คะแนนเป็น 0</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-[11px]">
+            <thead>
+              <tr className="bg-slate-50 text-slate-500 font-bold uppercase tracking-widest border-b border-slate-200">
+                <th className="px-6 py-3 text-left w-1/2">เกณฑ์</th>
+                <th className="px-6 py-3 text-center w-40">ความถี่ (Note 0 คะแนน)</th>
+                <th className="px-6 py-3 text-left">สรุปข้อความ note</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {problemsSummary.map((item, idx) => (
+                <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-6 py-4 align-top">
+                    <div className="space-y-1">
+                      <span className="text-red-600 font-black">- เกณฑ์ หัวข้อที่ {item.rowId} ข้อที่ {item.colIdx + 1}</span>
+                      <p className="text-slate-600 leading-relaxed">{item.criteriaText}</p>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-center align-top font-black text-slate-700">
+                    <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-red-50 text-red-600">
+                      {item.count}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 align-top">
+                    <ul className="list-disc list-inside space-y-1 text-slate-500">
+                      {Array.from(item.notes).map((note, nIdx) => (
+                        <li key={nIdx}>{note}</li>
+                      ))}
+                      {item.notes.size === 0 && <span className="text-slate-300 italic">ไม่มีบันทึกข้อความ</span>}
+                    </ul>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     );
@@ -502,8 +602,9 @@ export default function DetailedReport() {
         </div>
       </div>
 
-      {/* Overall Matrix */}
-      {renderMatrixTable(
+      <div ref={reportTypeRef} className="space-y-6">
+        {/* Overall Matrix */}
+        {renderMatrixTable(
         `ภาพรวมการประเมินคุณภาพการบันทึกเวชระเบียน (${reportType})`, 
         overallMatrix, 
         `รอบ: ${selectedRound === 'all' ? 'ทุกรอบ' : selectedRound} | แพทย์: ${selectedDoctor === 'all' ? 'ทุกคน' : selectedDoctor} | จำนวนเคสที่ประเมินแล้ว: ${overallMatrix.totalCases} ฉบับ`
@@ -527,6 +628,17 @@ export default function DetailedReport() {
           </div>
         ))}
       </div>
+
+      {/* Problems Summary Section */}
+      <div className="mt-12">
+        <div className="flex items-center gap-4 print:hidden mb-6">
+          <div className="h-px flex-1 bg-slate-200" />
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">สรุปปัญหาที่พบ</span>
+          <div className="h-px flex-1 bg-slate-200" />
+        </div>
+        {renderProblemsSummary()}
+      </div>
     </div>
-  );
+  </div>
+);
 }
