@@ -1,0 +1,19 @@
+{
+  "hos": {
+    "host": "192.168.0.5",
+    "user": "photalae",
+    "password": "ptl681115",
+    "database": "hos",
+    "port": 3306,
+    "charset": "tis620",
+    "connectTimeout": 10000
+  },
+  "mra": {
+    "host": "192.168.0.5",
+    "user": "photalae",
+    "password": "ptl681115",
+    "port": 3306,
+    "connectTimeout": 10000,
+    "database": "mra_audit"
+  }
+}

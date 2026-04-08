@@ -80,10 +80,7 @@ async function initHosPool(config: any = hosDbConfig) {
         if (field.type === 'VAR_STRING' || field.type === 'STRING' || field.type === 'BLOB' || field.type === 'TEXT') {
           const buf = field.buffer();
           if (buf) {
-            // Log raw bytes to file for analysis
-            fs.appendFileSync('debug.log', `Field: ${field.name}, Raw: ${buf.toString('hex')}\n`);
-            
-            // Try TIS-620 as it is the standard for HosXP
+            // Force TIS-620 decoding
             return iconv.decode(buf, 'tis620');
           }
           return null;
