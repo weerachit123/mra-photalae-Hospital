@@ -1,7 +1,8 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
-import fs from 'fs/promises';
+import fs from 'fs';
+import fsPromises from 'fs/promises';
 import mysql from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
 import iconv from 'iconv-lite';
@@ -11,7 +12,7 @@ const CONFIG_FILE = path.join(process.cwd(), 'db_config.json');
 
 async function getDbConfig() {
   try {
-    const data = await fs.readFile(CONFIG_FILE, 'utf-8');
+    const data = await fsPromises.readFile(CONFIG_FILE, 'utf-8');
     return JSON.parse(data);
   } catch (e) {
     return { hos: null, mra: null };
@@ -19,7 +20,7 @@ async function getDbConfig() {
 }
 
 async function saveDbConfig(config: any) {
-  await fs.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2));
+  await fsPromises.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2));
 }
 
 // HOS Database (HIS)
@@ -79,13 +80,11 @@ async function initHosPool(config: any = hosDbConfig) {
         if (field.type === 'VAR_STRING' || field.type === 'STRING' || field.type === 'BLOB' || field.type === 'TEXT') {
           const buf = field.buffer();
           if (buf) {
-            // Data is UTF-8 bytes interpreted as TIS-620, so we decode as UTF-8
-            // If that fails, try windows-874
-            try {
-              return iconv.decode(buf, 'utf8');
-            } catch (e) {
-              return iconv.decode(buf, 'windows-874');
-            }
+            // Log raw bytes to file for analysis
+            fs.appendFileSync('debug.log', `Field: ${field.name}, Raw: ${buf.toString('hex')}\n`);
+            
+            // Try TIS-620 as it is the standard for HosXP
+            return iconv.decode(buf, 'tis620');
           }
           return null;
         }
