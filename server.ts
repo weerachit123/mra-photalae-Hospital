@@ -7,6 +7,24 @@ import mysql from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
 import iconv from 'iconv-lite';
 
+// Helper to decode Thai characters from DB
+function decodeThai(data: any): any {
+  if (typeof data === 'string') {
+    return iconv.decode(Buffer.from(data, 'binary'), 'tis620');
+  } else if (Buffer.isBuffer(data)) {
+    return iconv.decode(data, 'tis620');
+  } else if (Array.isArray(data)) {
+    return data.map(decodeThai);
+  } else if (data !== null && typeof data === 'object') {
+    const newData: any = {};
+    for (const key in data) {
+      newData[key] = decodeThai(data[key]);
+    }
+    return newData;
+  }
+  return data;
+}
+
 // --- Database Configurations ---
 const CONFIG_FILE = path.join(process.cwd(), 'db_config.json');
 
