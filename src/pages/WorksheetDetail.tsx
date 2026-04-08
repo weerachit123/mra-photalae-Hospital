@@ -23,10 +23,6 @@ export default function WorksheetDetail() {
   const [worksheet, setWorksheet] = useState<Worksheet | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [user, setUser] = useState<any>(null);
-  const [showAccessModal, setShowAccessModal] = useState(false);
-  const [allUsers, setAllUsers] = useState<User[]>([]);
-  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
-  const [isSavingAccess, setIsSavingAccess] = useState(false);
 
   useEffect(() => {
     // Check admin role from localStorage
@@ -36,10 +32,6 @@ export default function WorksheetDetail() {
       setUser(u);
       const isAdm = u.role === 'admin' || u.loginname === '0176' || u.loginname === '0382';
       setIsAdmin(isAdm);
-      
-      if (isAdm) {
-        fetchAllUsers();
-      }
     } else {
       navigate('/');
     }
@@ -67,55 +59,6 @@ export default function WorksheetDetail() {
 
     fetchWorksheet();
   }, [id, navigate, user?.loginname, user?.role]);
-
-  const fetchAllUsers = async () => {
-    try {
-      const response = await fetch('/api/users');
-      const data = await response.json();
-      if (data.success) setAllUsers(data.users);
-    } catch (error) {
-      console.error('Failed to fetch users:', error);
-    }
-  };
-
-  const handleOpenAccessModal = async () => {
-    setShowAccessModal(true);
-    try {
-      const response = await fetch(`/api/mra/worksheets/${id}/access`);
-      const data = await response.json();
-      if (data.success) {
-        setSelectedUsers(data.access.map((a: any) => a.loginname));
-      }
-    } catch (error) {
-      console.error('Failed to fetch worksheet access:', error);
-    }
-  };
-
-  const handleToggleUserAccess = (loginname: string) => {
-    setSelectedUsers(prev => 
-      prev.includes(loginname) ? prev.filter(ln => ln !== loginname) : [...prev, loginname]
-    );
-  };
-
-  const handleSaveAccess = async () => {
-    setIsSavingAccess(true);
-    try {
-      const response = await fetch(`/api/mra/worksheets/${id}/access`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ loginnames: selectedUsers })
-      });
-      const data = await response.json();
-      if (data.success) {
-        alert('บันทึกสิทธิ์การเข้าถึงเรียบร้อยแล้ว');
-        setShowAccessModal(false);
-      }
-    } catch (error) {
-      console.error('Failed to save access:', error);
-    } finally {
-      setIsSavingAccess(false);
-    }
-  };
 
   // Permission check after worksheet is loaded
   useEffect(() => {
@@ -215,15 +158,6 @@ export default function WorksheetDetail() {
                 <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${isOPD ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'}`}>
                   {worksheet.type}
                 </span>
-                {isAdmin && (
-                  <button 
-                    onClick={handleOpenAccessModal}
-                    className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-blue-200 text-blue-600 rounded-lg text-[10px] font-bold hover:bg-blue-50 transition-all shadow-sm uppercase tracking-wider"
-                  >
-                    <Shield className="w-3 h-3" />
-                    จัดการสิทธิ์
-                  </button>
-                )}
               </div>
               <p className="mt-1 text-sm text-slate-500 font-medium">
                 <span className="text-slate-400">แผนก/วอร์ด:</span> {worksheet.department} 
@@ -323,76 +257,6 @@ export default function WorksheetDetail() {
           </div>
         </div>
       </div>
-      {/* Access Management Modal */}
-      {showAccessModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <Shield className="w-5 h-5 text-blue-600" />
-                จัดการสิทธิ์การเข้าถึงใบงาน
-              </h3>
-              <button 
-                onClick={() => setShowAccessModal(false)}
-                className="p-2 hover:bg-slate-200 rounded-full transition-colors"
-              >
-                <XCircle className="w-5 h-5 text-slate-400" />
-              </button>
-            </div>
-            
-            <div className="p-6">
-              <p className="text-sm text-slate-500 mb-4">เลือกผู้ใช้งานที่อนุญาตให้มองเห็นและประเมินใบงานนี้ได้</p>
-              
-              <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2 mb-6">
-                {allUsers.map((u) => (
-                  <label 
-                    key={u.loginname} 
-                    className={`flex items-center p-3 rounded-xl border cursor-pointer transition-all ${
-                      selectedUsers.includes(u.loginname) 
-                        ? 'bg-blue-50 border-blue-200' 
-                        : 'bg-white border-slate-100 hover:border-slate-200'
-                    }`}
-                  >
-                    <input 
-                      type="checkbox"
-                      checked={selectedUsers.includes(u.loginname)}
-                      onChange={() => handleToggleUserAccess(u.loginname)}
-                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 mr-3"
-                    />
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold text-slate-700">{u.name}</span>
-                      <span className="text-[10px] text-slate-400 uppercase font-bold">{u.loginname} | {u.department}</span>
-                    </div>
-                  </label>
-                ))}
-                {allUsers.length === 0 && (
-                  <div className="text-center py-8">
-                    <Users className="w-12 h-12 text-slate-200 mx-auto mb-2" />
-                    <p className="text-sm text-slate-400">ไม่พบรายชื่อผู้ใช้งานในระบบ</p>
-                    <Link to="/dashboard/users" className="text-xs text-blue-600 font-bold hover:underline">ไปที่หน้าจัดการผู้ใช้งาน</Link>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex gap-3">
-                <button 
-                  onClick={() => setShowAccessModal(false)}
-                  className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-all"
-                >
-                  ยกเลิก
-                </button>
-                <button 
-                  onClick={handleSaveAccess}
-                  disabled={isSavingAccess}
-                  className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 shadow-lg shadow-blue-100 transition-all"
-                >
-                  {isSavingAccess ? 'กำลังบันทึก...' : 'บันทึกสิทธิ์'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

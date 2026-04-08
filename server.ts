@@ -30,7 +30,7 @@ const hosDbConfig = {
   database: process.env.HOS_DB_NAME || 'hos',
   port: parseInt(process.env.HOS_DB_PORT || '3306'),
   connectTimeout: 3000,
-  charset: 'utf8mb4'
+  charset: 'tis620'
 };
 
 // MRA Database (Audit)
@@ -72,7 +72,7 @@ async function initHosPool(config: any = hosDbConfig) {
     if (hosPool) await hosPool.end();
     hosPool = mysql.createPool({
       ...config,
-      charset: config.charset || 'utf8mb4'
+      charset: config.charset || 'tis620'
     });
     console.log('HOS MySQL pool initialized');
     return true;
@@ -575,70 +575,17 @@ async function startServer() {
     }
   });
 
-  // Get users with access to a specific worksheet
-  app.get('/api/mra/worksheets/:id/access', async (req, res) => {
-    if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
-    const { id } = req.params;
-    try {
-      const [rows] = await mraPool.execute(
-        'SELECT loginname FROM user_worksheet_access WHERE worksheet_id = ?',
-        [id]
-      );
-      res.json({ success: true, access: rows });
-    } catch (error: any) {
-      res.status(500).json({ success: false, message: error.message });
-    }
-  });
-
-  // Update users with access to a specific worksheet
-  app.post('/api/mra/worksheets/:id/access', async (req, res) => {
-    if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
-    const { id } = req.params;
-    const { loginnames } = req.body; // Array of loginnames
-
-    const connection = await mraPool.getConnection();
-    try {
-      await connection.beginTransaction();
-      
-      // Remove old access
-      await connection.execute('DELETE FROM user_worksheet_access WHERE worksheet_id = ?', [id]);
-      
-      // Add new access
-      if (loginnames && loginnames.length > 0) {
-        for (const loginname of loginnames) {
-          await connection.execute(
-            'INSERT INTO user_worksheet_access (loginname, worksheet_id) VALUES (?, ?)',
-            [loginname, id]
-          );
-        }
-      }
-      
-      await connection.commit();
-      res.json({ success: true, message: 'อัปเดตสิทธิ์การเข้าถึงใบงานเรียบร้อยแล้ว' });
-    } catch (error: any) {
-      await connection.rollback();
-      res.status(500).json({ success: false, message: error.message });
-    } finally {
-      connection.release();
-    }
-  });
-
   // Get user worksheet access
   app.get('/api/users/:loginname/access', async (req, res) => {
     if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
     const { loginname } = req.params;
     try {
-      const [wsRows] = await mraPool.execute(
-        'SELECT worksheet_id FROM user_worksheet_access WHERE loginname = ?',
-        [loginname]
-      );
       const [depRows] = await mraPool.execute(
         'SELECT department_name FROM user_department_access WHERE loginname = ?',
         [loginname]
       );
       res.json({ 
         success: true, 
-        access: wsRows,
         departmentAccess: depRows
       });
     } catch (error: any) {
@@ -650,24 +597,11 @@ async function startServer() {
   app.post('/api/users/:loginname/access', async (req, res) => {
     if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
     const { loginname } = req.params;
-    const { worksheetIds, departmentNames } = req.body; // Arrays
+    const { departmentNames } = req.body; // Arrays
 
     const connection = await mraPool.getConnection();
     try {
       await connection.beginTransaction();
-      
-      // Update Worksheet Access
-      if (worksheetIds !== undefined) {
-        await connection.execute('DELETE FROM user_worksheet_access WHERE loginname = ?', [loginname]);
-        if (worksheetIds && worksheetIds.length > 0) {
-          for (const wsId of worksheetIds) {
-            await connection.execute(
-              'INSERT INTO user_worksheet_access (loginname, worksheet_id) VALUES (?, ?)',
-              [loginname, wsId]
-            );
-          }
-        }
-      }
 
       // Update Department Access
       if (departmentNames !== undefined) {
@@ -783,14 +717,12 @@ async function startServer() {
       if (role !== 'admin' && loginname) {
         query = `
           SELECT DISTINCT w.* FROM worksheets w
-          LEFT JOIN user_worksheet_access uwa ON w.id = uwa.worksheet_id
           LEFT JOIN user_department_access uda ON w.department = uda.department_name
           LEFT JOIN users u ON u.loginname = ?
-          WHERE uwa.loginname = ? 
-             OR uda.loginname = ? 
+          WHERE uda.loginname = ? 
              OR w.department = u.department
         `;
-        params = [loginname, loginname, loginname];
+        params = [loginname, loginname];
       }
 
       const [worksheets] = await mraPool.query<mysql.RowDataPacket[]>(query + ' ORDER BY created_at DESC', params);

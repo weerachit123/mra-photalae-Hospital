@@ -41,12 +41,10 @@ const ALL_DEPARTMENTS = [
 
 export default function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
-  const [worksheets, setWorksheets] = useState<Worksheet[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [hosUsers, setHosUsers] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [userAccess, setUserAccess] = useState<string[]>([]);
   const [departmentAccess, setDepartmentAccess] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -60,7 +58,6 @@ export default function UserManagement() {
 
   useEffect(() => {
     fetchUsers();
-    fetchWorksheets();
   }, []);
 
   const fetchUsers = async () => {
@@ -70,16 +67,6 @@ export default function UserManagement() {
       if (data.success) setUsers(data.users);
     } catch (error) {
       console.error('Failed to fetch users:', error);
-    }
-  };
-
-  const fetchWorksheets = async () => {
-    try {
-      const response = await fetch('/api/mra/worksheets?role=admin');
-      const data = await response.json();
-      if (data.success) setWorksheets(data.data);
-    } catch (error) {
-      console.error('Failed to fetch worksheets:', error);
     }
   };
 
@@ -174,7 +161,6 @@ export default function UserManagement() {
       const response = await fetch(`/api/users/${user.loginname}/access`);
       const data = await response.json();
       if (data.success) {
-        setUserAccess(data.access.map((a: any) => a.worksheet_id));
         setDepartmentAccess(data.departmentAccess.map((d: any) => d.department_name));
       }
     } catch (error) {
@@ -190,7 +176,6 @@ export default function UserManagement() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          worksheetIds: userAccess,
           departmentNames: departmentAccess
         })
       });
@@ -198,6 +183,7 @@ export default function UserManagement() {
       if (data.success) {
         alert('บันทึกสิทธิ์การเข้าถึงเรียบร้อยแล้ว');
         setSelectedUser(null);
+        fetchUsers(); // Refresh user list to show mapped departments
       }
     } catch (error) {
       console.error('Failed to save access:', error);
@@ -421,37 +407,6 @@ export default function UserManagement() {
                           className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 mr-3"
                         />
                         <span className="text-sm font-bold text-slate-700">{depName}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Individual Worksheet Access */}
-                <div>
-                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">สิทธิ์รายใบงาน (เพิ่มเติม)</h3>
-                  <div className="grid grid-cols-1 gap-2">
-                    {worksheets.map((ws) => (
-                      <label 
-                        key={ws.id} 
-                        className={`flex items-center p-3 rounded-xl border cursor-pointer transition-all ${
-                          userAccess.includes(ws.id) 
-                            ? 'bg-blue-50 border-blue-200' 
-                            : 'bg-white border-slate-100 hover:border-slate-200'
-                        }`}
-                      >
-                        <input 
-                          type="checkbox"
-                          checked={userAccess.includes(ws.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) setUserAccess([...userAccess, ws.id]);
-                            else setUserAccess(userAccess.filter(id => id !== ws.id));
-                          }}
-                          className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 mr-3"
-                        />
-                        <div className="flex flex-col">
-                          <span className="text-sm font-bold text-slate-700">{ws.name}</span>
-                          <span className="text-[10px] text-slate-400 uppercase font-bold">{ws.type}</span>
-                        </div>
                       </label>
                     ))}
                   </div>
