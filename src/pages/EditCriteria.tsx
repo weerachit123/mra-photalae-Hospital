@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 const DEFAULT_OPD_CRITERIA: Record<string, string[]> = {
   '1': [
@@ -103,8 +103,8 @@ const DEFAULT_IPD_CRITERIA: Record<string, string[]> = {
   '12': ['Date/Time', 'Focus/Problem', 'Data/Action', 'Response', 'ลงลายมือชื่อพยาบาล', '', '', '', ''],
 };
 
-export const getOPDCriteria = () => {
-  const saved = localStorage.getItem('mra_opd_criteria');
+export const getOPDCriteria = (year: string = '2557') => {
+  const saved = localStorage.getItem(`mra_opd_criteria_${year}`);
   if (saved) {
     try {
       return JSON.parse(saved);
@@ -115,8 +115,8 @@ export const getOPDCriteria = () => {
   return DEFAULT_OPD_CRITERIA;
 };
 
-export const getIPDCriteria = () => {
-  const saved = localStorage.getItem('mra_ipd_criteria');
+export const getIPDCriteria = (year: string = '2557') => {
+  const saved = localStorage.getItem(`mra_ipd_criteria_${year}`);
   if (saved) {
     try {
       return JSON.parse(saved);
@@ -127,8 +127,20 @@ export const getIPDCriteria = () => {
   return DEFAULT_IPD_CRITERIA;
 };
 
+export const saveOPDCriteria = (criteria: Record<string, string[]>, year: string = '2557') => {
+  localStorage.setItem(`mra_opd_criteria_${year}`, JSON.stringify(criteria));
+};
+
+export const saveIPDCriteria = (criteria: Record<string, string[]>, year: string = '2557') => {
+  localStorage.setItem(`mra_ipd_criteria_${year}`, JSON.stringify(criteria));
+};
+
 export default function EditCriteria() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const targetYear = queryParams.get('year') || '2557';
+
   const userStr = localStorage.getItem('user');
   const user = userStr ? JSON.parse(userStr) : null;
   const isSuperAdmin = user?.loginname === '0176' || user?.loginname === '0382' || user?.loginname === 'admin';
@@ -147,9 +159,9 @@ export default function EditCriteria() {
   const [activeTab, setActiveTab] = useState<'OPD' | 'IPD'>('OPD');
 
   useEffect(() => {
-    setOpdCriteria(getOPDCriteria());
-    setIpdCriteria(getIPDCriteria());
-  }, []);
+    setOpdCriteria(getOPDCriteria(targetYear));
+    setIpdCriteria(getIPDCriteria(targetYear));
+  }, [targetYear]);
 
   const handleOpdChange = (rowId: string, colIdx: number, value: string) => {
     setOpdCriteria(prev => {
@@ -168,8 +180,8 @@ export default function EditCriteria() {
   };
 
   const handleSave = () => {
-    localStorage.setItem('mra_opd_criteria', JSON.stringify(opdCriteria));
-    localStorage.setItem('mra_ipd_criteria', JSON.stringify(ipdCriteria));
+    saveOPDCriteria(opdCriteria, targetYear);
+    saveIPDCriteria(ipdCriteria, targetYear);
     alert('บันทึกข้อมูลเกณฑ์การประเมินเรียบร้อยแล้ว');
   };
 
@@ -177,15 +189,15 @@ export default function EditCriteria() {
     if (window.confirm('คุณต้องการคืนค่าเกณฑ์เริ่มต้นทั้งหมดหรือไม่?')) {
       setOpdCriteria(DEFAULT_OPD_CRITERIA);
       setIpdCriteria(DEFAULT_IPD_CRITERIA);
-      localStorage.setItem('mra_opd_criteria', JSON.stringify(DEFAULT_OPD_CRITERIA));
-      localStorage.setItem('mra_ipd_criteria', JSON.stringify(DEFAULT_IPD_CRITERIA));
+      saveOPDCriteria(DEFAULT_OPD_CRITERIA, targetYear);
+      saveIPDCriteria(DEFAULT_IPD_CRITERIA, targetYear);
     }
   };
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold">แก้ไขข้อมูลเกณฑ์การประเมิน</h2>
+        <h2 className="text-2xl font-bold">ตั้งค่าเกณฑ์การประเมิน {targetYear}</h2>
         <div className="space-x-2">
           <button onClick={handleReset} className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded shadow">
             คืนค่าเริ่มต้น

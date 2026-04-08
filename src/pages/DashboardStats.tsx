@@ -13,31 +13,31 @@ import autoTable from 'jspdf-autotable';
 
 // Define criteria for OPD and IPD
 const OPD_CRITERIA = [
-  { id: '1', name: "Patient's Profile" },
-  { id: '2', name: "History (1st visit)" },
-  { id: '3', name: "Physical examination" },
-  { id: '4', name: "Treatment/Investigation" },
-  { id: '5_1', name: "Follow up ครั้งที่ 1" },
-  { id: '5_2', name: "Follow up ครั้งที่ 2" },
-  { id: '5_3', name: "Follow up ครั้งที่ 3" },
-  { id: '6', name: "Operative note" },
-  { id: '7', name: "Informed consent" },
-  { id: '8', name: "Rehabilitation record" },
+  { id: '1', name: "Patient's Profile", cols: 7 },
+  { id: '2', name: "History (1st visit)", cols: 7 },
+  { id: '3', name: "Physical examination", cols: 7 },
+  { id: '4', name: "Treatment/Investigation", cols: 7 },
+  { id: '5_1', name: "Follow up ครั้งที่ 1", cols: 7 },
+  { id: '5_2', name: "Follow up ครั้งที่ 2", cols: 7 },
+  { id: '5_3', name: "Follow up ครั้งที่ 3", cols: 7 },
+  { id: '6', name: "Operative note", cols: 7 },
+  { id: '7', name: "Informed consent", cols: 7 },
+  { id: '8', name: "Rehabilitation record", cols: 7, blockedCols: [5, 6] },
 ];
 
 const IPD_CRITERIA = [
-  { id: '1', name: "Discharge summary : Dx, Op" },
-  { id: '2', name: "Discharge summary : Other" },
-  { id: '3', name: "Informed consent" },
-  { id: '4', name: "History" },
-  { id: '5', name: "Physical examination" },
-  { id: '6', name: "Progress note" },
-  { id: '7', name: "Consultation record" },
-  { id: '8', name: "Anaesthetic record" },
-  { id: '9', name: "Operative note" },
-  { id: '10', name: "Labour record" },
-  { id: '11', name: "Rehabilitation record" },
-  { id: '12', name: "Nurses' note helpful" },
+  { id: '1', name: "Discharge summary : Dx, Op", cols: 9 },
+  { id: '2', name: "Discharge summary : Other", cols: 9, blockedCols: [7, 8] },
+  { id: '3', name: "Informed consent", cols: 9 },
+  { id: '4', name: "History", cols: 9 },
+  { id: '5', name: "Physical examination", cols: 9 },
+  { id: '6', name: "Progress note", cols: 9 },
+  { id: '7', name: "Consultation record", cols: 9 },
+  { id: '8', name: "Anaesthetic record", cols: 9 },
+  { id: '9', name: "Operative note", cols: 9 },
+  { id: '10', name: "Labour record", cols: 9 },
+  { id: '11', name: "Rehabilitation record", cols: 9 },
+  { id: '12', name: "Nurses' note helpful", cols: 9 },
 ];
 
 interface Case {
@@ -61,6 +61,7 @@ const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'
 
 export default function DashboardStats() {
   const [worksheets, setWorksheets] = useState<Worksheet[]>([]);
+  const [selectedYear, setSelectedYear] = useState<string>('all');
   const [selectedRound, setSelectedRound] = useState<string>('all');
   const [selectedDept, setSelectedDept] = useState<string>('all');
   const [reportType, setReportType] = useState<'OPD' | 'IPD'>('OPD');
@@ -85,10 +86,24 @@ export default function DashboardStats() {
     fetchWorksheets();
   }, []);
 
-  const rounds = useMemo(() => {
-    const uniqueRounds = Array.from(new Set(worksheets.map(w => w.name || 'Unknown')));
-    return uniqueRounds.sort();
+  const years = useMemo(() => {
+    const uniqueYears = new Set<string>();
+    worksheets.forEach(w => {
+      const match = w.name?.match(/\d{2}/);
+      if (match) uniqueYears.add(`25${match[0]}`);
+    });
+    return Array.from(uniqueYears).sort((a, b) => b.localeCompare(a));
   }, [worksheets]);
+
+  const rounds = useMemo(() => {
+    const filteredByYear = worksheets.filter(w => {
+      if (selectedYear === 'all') return true;
+      const match = w.name?.match(/\d{2}/);
+      return match && `25${match[0]}` === selectedYear;
+    });
+    const uniqueRounds = Array.from(new Set(filteredByYear.map(w => w.name || 'Unknown')));
+    return uniqueRounds.sort();
+  }, [worksheets, selectedYear]);
 
   const departments = useMemo(() => {
     const uniqueDepts = Array.from(new Set(worksheets.map(w => w.department || 'Unknown')));
@@ -97,11 +112,16 @@ export default function DashboardStats() {
 
   const filteredWorksheets = useMemo(() => {
     return worksheets.filter(w => {
+      let matchYear = true;
+      if (selectedYear !== 'all') {
+        const match = w.name?.match(/\d{2}/);
+        matchYear = match && `25${match[0]}` === selectedYear;
+      }
       const matchRound = selectedRound === 'all' || (w.name || 'Unknown') === selectedRound;
       const matchDept = selectedDept === 'all' || (w.department || 'Unknown') === selectedDept;
-      return matchRound && matchDept;
+      return matchYear && matchRound && matchDept;
     });
-  }, [worksheets, selectedRound, selectedDept]);
+  }, [worksheets, selectedYear, selectedRound, selectedDept]);
 
   const stats = useMemo(() => {
     let totalPoints = 0;
@@ -125,10 +145,16 @@ export default function DashboardStats() {
 
           Object.entries(c.scores).forEach(([key, val]) => {
             if (val === '1') {
-              caseEarned++;
-              caseTotal++;
+              if (key.endsWith('_bonus')) {
+                caseEarned += 1;
+              } else if (key.endsWith('_deduct')) {
+                caseEarned -= 1;
+              } else {
+                caseEarned += 1;
+                caseTotal += 1;
+              }
             } else if (val === '0') {
-              caseTotal++;
+              caseTotal += 1;
             }
           });
 
@@ -183,14 +209,33 @@ export default function DashboardStats() {
       deptWorksheets.forEach(ws => {
         ws.cases.forEach(c => {
           if (c.status === 'audited' && c.scores) {
-            Object.entries(c.scores).forEach(([key, val]) => {
-              const [rowId] = key.split('_');
-              if (criteriaScores[rowId]) {
-                if (val === '1') {
-                  criteriaScores[rowId].earned++;
-                  criteriaScores[rowId].total++;
-                } else if (val === '0') {
-                  criteriaScores[rowId].total++;
+            criteria.forEach(crit => {
+              const rowId = crit.id;
+              const isNA = c.scores?.[`${rowId}_NA`] === '1';
+              const isMiss = c.scores?.[`${rowId}_M`] === '1';
+              const isNo = c.scores?.[`${rowId}_O`] === '1';
+
+              if (isNA) return;
+
+              // Bonus/Deduct
+              if (c.scores?.[`${rowId}_bonus`] === '1') criteriaScores[rowId].earned += 1;
+              if (c.scores?.[`${rowId}_deduct`] === '1') criteriaScores[rowId].earned -= 1;
+
+              for (let i = 0; i < crit.cols; i++) {
+                // Skip blocked columns
+                if ((crit as any).blockedCols?.includes(i)) continue;
+
+                if (isMiss || isNo) {
+                  criteriaScores[rowId].total += 1;
+                } else {
+                  // Default to '1' if not set
+                  const val = c.scores?.[`${rowId}_${i}`] || '1';
+                  if (val === '1') {
+                    criteriaScores[rowId].earned += 1;
+                    criteriaScores[rowId].total += 1;
+                  } else if (val === '0') {
+                    criteriaScores[rowId].total += 1;
+                  }
                 }
               }
             });
@@ -304,6 +349,21 @@ export default function DashboardStats() {
       <div className="flex flex-wrap gap-3 print:hidden">
         <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm">
           <Calendar className="w-4 h-4 text-slate-400" />
+          <select 
+            value={selectedYear} 
+            onChange={(e) => {
+              setSelectedYear(e.target.value);
+              setSelectedRound('all'); // Reset round when year changes
+            }}
+            className="text-xs font-bold text-slate-700 focus:outline-none bg-transparent"
+          >
+            <option value="all">ทุกปีงบประมาณ</option>
+            {years.map(y => <option key={y} value={y}>ปี {y}</option>)}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm">
+          <Filter className="w-4 h-4 text-slate-400" />
           <select 
             value={selectedRound} 
             onChange={(e) => setSelectedRound(e.target.value)}

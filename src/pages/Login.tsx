@@ -234,11 +234,16 @@ export default function Login() {
         </div>
 
         {/* Footer */}
-        <div className="mt-10 text-center">
+        <div className="mt-10 text-center space-y-2">
           <p className="text-xs font-medium text-slate-400 flex items-center justify-center gap-1.5">
             <Activity className="w-3.5 h-3.5" />
             Phothale Hospital Quality Assurance
           </p>
+          <div className="flex flex-col md:flex-row justify-center items-center gap-2 text-slate-400 text-[10px] font-medium">
+            <span>© 2026 photalae Hospital</span>
+            <span className="hidden md:inline text-slate-300">|</span>
+            <span>Created by Weerachit Klinhom Mrs37</span>
+          </div>
         </div>
       </div>
 

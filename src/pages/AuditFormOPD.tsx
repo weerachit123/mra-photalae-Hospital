@@ -95,17 +95,29 @@ function ReasonModal({ isOpen, onClose, onSave, criteriaKey, criteriaName }: Rea
   );
 }
 
-const ROWS = [
-  { id: '1', name: "Patient's Profile", cols: ['1','1','1','1','1','1','1'] },
-  { id: '2', name: "History (1st visit)", cols: ['1','1','1','1','1','1','1'] },
-  { id: '3', name: "Physical examination", cols: ['1','1','1','1','1','1','1'] },
-  { id: '4', name: "Treatment/Investigation", cols: ['1','1','1','1','1','1','1'] },
-  { id: '5_1', name: "Follow up ครั้งที่ 1", cols: ['1','1','1','1','1','-','-'], isSub: true },
-  { id: '5_2', name: "Follow up ครั้งที่ 2", cols: ['1','1','1','1','1','-','-'], isSub: true },
-  { id: '5_3', name: "Follow up ครั้งที่ 3", cols: ['1','1','1','1','1','-','-'], isSub: true },
-  { id: '6', name: "Operative note", cols: ['1','1','1','1','1','-','-'] },
-  { id: '7', name: "Informed consent", cols: ['1','1','1','1','1','-','-'] },
-  { id: '8', name: "Rehabilitation record *", cols: ['1','1','1','1','1','-','-'] },
+const ROWS_2557 = [
+  { id: '1', name: "Patient's Profile", cols: ['1','1','1','1','1','1','1'], naBlocked: true, missingBlocked: false, criteriaBlocked: false, bonusBlocked: true, deductBlocked: false },
+  { id: '2', name: "History (1st visit)", cols: ['1','1','1','1','1','1','1'], naBlocked: true, missingBlocked: false, criteriaBlocked: false, bonusBlocked: false, deductBlocked: true },
+  { id: '3', name: "Physical examination", cols: ['1','1','1','1','1','1','1'], naBlocked: true, missingBlocked: false, criteriaBlocked: false, bonusBlocked: true, deductBlocked: true },
+  { id: '4', name: "Treatment/Investigation", cols: ['1','1','1','1','1','1','1'], naBlocked: true, missingBlocked: false, criteriaBlocked: false, bonusBlocked: false, deductBlocked: true },
+  { id: '5_1', name: "Follow up ครั้งที่ 1", cols: ['1','1','1','1','1','1','1'], isSub: true, naBlocked: false, missingBlocked: false, criteriaBlocked: false, bonusBlocked: false, deductBlocked: true },
+  { id: '5_2', name: "Follow up ครั้งที่ 2", cols: ['1','1','1','1','1','1','1'], isSub: true, naBlocked: false, missingBlocked: false, criteriaBlocked: false, bonusBlocked: false, deductBlocked: true },
+  { id: '5_3', name: "Follow up ครั้งที่ 3", cols: ['1','1','1','1','1','1','1'], isSub: true, naBlocked: false, missingBlocked: false, criteriaBlocked: false, bonusBlocked: false, deductBlocked: true },
+  { id: '6', name: "Operative note", cols: ['1','1','1','1','1','1','1'], naBlocked: false, missingBlocked: false, criteriaBlocked: false, bonusBlocked: true, deductBlocked: true },
+  { id: '7', name: "Informed consent", cols: ['1','1','1','1','1','1','1'], naBlocked: false, missingBlocked: false, criteriaBlocked: false, bonusBlocked: true, deductBlocked: false },
+];
+
+const ROWS_2563 = [
+  { id: '1', name: "Patient's Profile", cols: ['1','1','1','1','1','1','1'], naBlocked: true, missingBlocked: false, criteriaBlocked: false, bonusBlocked: true, deductBlocked: false },
+  { id: '2', name: "History (1st visit)", cols: ['1','1','1','1','1','1','1'], naBlocked: true, missingBlocked: false, criteriaBlocked: false, bonusBlocked: false, deductBlocked: true },
+  { id: '3', name: "Physical examination/Diagnosis", cols: ['1','1','1','1','1','1','1'], naBlocked: true, missingBlocked: false, criteriaBlocked: false, bonusBlocked: true, deductBlocked: true },
+  { id: '4', name: "Treatment/Investigation", cols: ['1','1','1','1','1','1','1'], naBlocked: true, missingBlocked: false, criteriaBlocked: false, bonusBlocked: false, deductBlocked: true },
+  { id: '5_1', name: "Follow up ครั้งที่ 1", cols: ['1','1','1','1','1','1','1'], isSub: true, naBlocked: false, missingBlocked: false, criteriaBlocked: false, bonusBlocked: false, deductBlocked: true },
+  { id: '5_2', name: "Follow up ครั้งที่ 2", cols: ['1','1','1','1','1','1','1'], isSub: true, naBlocked: false, missingBlocked: false, criteriaBlocked: false, bonusBlocked: false, deductBlocked: true },
+  { id: '5_3', name: "Follow up ครั้งที่ 3", cols: ['1','1','1','1','1','1','1'], isSub: true, naBlocked: false, missingBlocked: false, criteriaBlocked: false, bonusBlocked: false, deductBlocked: true },
+  { id: '6', name: "Operative note", cols: ['1','1','1','1','1','1','1'], naBlocked: false, missingBlocked: false, criteriaBlocked: false, bonusBlocked: true, deductBlocked: true },
+  { id: '7', name: "Informed consent", cols: ['1','1','1','1','1','1','1'], naBlocked: false, missingBlocked: false, criteriaBlocked: false, bonusBlocked: true, deductBlocked: true },
+  { id: '8', name: "Rehabilitation record *", cols: ['1','1','1','1','1','-','-'], naBlocked: true, missingBlocked: true, criteriaBlocked: true, bonusBlocked: true, deductBlocked: true },
 ];
 
 export default function AuditFormOPD() {
@@ -113,6 +125,10 @@ export default function AuditFormOPD() {
   const location = useLocation();
   const navigate = useNavigate();
   const caseData = location.state || {};
+  const criteriaYear = caseData.criteria_year || '2557';
+  const ROWS = criteriaYear === '2563' ? ROWS_2563 : ROWS_2557;
+  const minScoreGeneral = criteriaYear === '2563' ? 14 : 19;
+  const minScoreChronic = criteriaYear === '2563' ? 18 : 24;
 
   const [scores, setScores] = useState<Record<string, string>>({});
   const [reasons, setCaseReasons] = useState<Record<string, string>>({});
@@ -126,7 +142,7 @@ export default function AuditFormOPD() {
   const [modalConfig, setModalConfig] = useState<{ isOpen: boolean; key: string; name: string } | null>(null);
 
   useEffect(() => {
-    setOpdCriteria(getOPDCriteria());
+    setOpdCriteria(getOPDCriteria(criteriaYear));
     
     // Check permission
     const userJson = localStorage.getItem('user');
@@ -243,10 +259,15 @@ export default function AuditFormOPD() {
             }
           }
         });
+        // Add Bonus/Deduct
+        const bonus = Number(scores[`${row.id}_bonus`] || 0);
+        const deduct = Number(scores[`${row.id}_deduct`] || 0);
+        te += bonus;
+        te -= deduct;
       }
     });
     return { totalFull: tf, totalEarned: te };
-  }, [scores]);
+  }, [scores, ROWS]);
 
   const totalPct = totalFull > 0 ? ((totalEarned / totalFull) * 100).toFixed(2) : '0.00';
 
@@ -263,7 +284,9 @@ export default function AuditFormOPD() {
       reasons,
       remarks,
       overallFinding,
-      overallFindingText
+      overallFindingText,
+      auditor_name: caseData.auditor_name || JSON.parse(localStorage.getItem('user') || '{}').name,
+      audit_date: caseData.audit_date || new Date().toISOString()
     };
 
     try {
@@ -427,6 +450,11 @@ export default function AuditFormOPD() {
                         }
                       }
                     });
+                    // Add Bonus/Deduct to row earned score
+                    const bonus = scores[`${row.id}_bonus`] === '1' ? 1 : 0;
+                    const deduct = scores[`${row.id}_deduct`] === '1' ? 1 : 0;
+                    earned += bonus;
+                    earned -= deduct;
                   }
                   
                   let rowBgClass = 'bg-white';
@@ -440,43 +468,51 @@ export default function AuditFormOPD() {
                         {row.name}
                       </td>
                       <td className="px-1 py-2 border border-slate-200">
-                        <div className="flex justify-center">
-                          <button 
-                            className={`w-6 h-6 rounded-md border flex items-center justify-center transition-all active:scale-90 ${
-                              isNA 
-                                ? 'bg-slate-500 border-slate-500 text-white' 
-                                : 'bg-white border-slate-200 text-slate-300 hover:border-slate-400'
-                            }`}
-                            onClick={() => toggleScore(row.id, 'NA', 'N')}
-                          >
-                            {isNA ? <Check className="w-3 h-3" /> : <Minus className="w-2 h-2" />}
-                          </button>
-                        </div>
+                        {row.naBlocked ? (
+                          <div className="w-6 h-6 mx-auto rounded-md bg-pink-400/40 border border-pink-500/30"></div>
+                        ) : (
+                          <div className="flex justify-center">
+                            <button 
+                              className={`w-6 h-6 rounded-md border flex items-center justify-center transition-all active:scale-90 ${
+                                isNA 
+                                  ? 'bg-slate-500 border-slate-500 text-white' 
+                                  : 'bg-white border-slate-200 text-slate-300 hover:border-slate-400'
+                              }`}
+                              onClick={() => toggleScore(row.id, 'NA', 'N')}
+                            >
+                              {isNA ? <Check className="w-3 h-3" /> : <Minus className="w-2 h-2" />}
+                            </button>
+                          </div>
+                        )}
                       </td>
                       <td className="px-1 py-2 border border-slate-200">
-                        <div className="flex justify-center">
-                          <button 
-                            className={`w-6 h-6 rounded-md border flex items-center justify-center transition-all active:scale-90 ${
-                              isMiss 
-                                ? 'bg-red-500 border-red-500 text-white' 
-                                : 'bg-white border-slate-200 text-slate-300 hover:border-red-400'
-                            }`}
-                            onClick={() => toggleScore(row.id, 'M', 'M')}
-                          >
-                            {isMiss ? <Check className="w-3 h-3" /> : <Minus className="w-2 h-2" />}
-                          </button>
-                        </div>
+                        {row.missingBlocked ? (
+                          <div className="w-6 h-6 mx-auto rounded-md bg-pink-400/40 border border-pink-500/30"></div>
+                        ) : (
+                          <div className="flex justify-center">
+                            <button 
+                              className={`w-6 h-6 rounded-md border flex items-center justify-center transition-all active:scale-90 ${
+                                isMiss 
+                                  ? 'bg-red-500 border-red-500 text-white' 
+                                  : 'bg-white border-slate-200 text-slate-300 hover:border-red-300'
+                              }`}
+                              onClick={() => toggleScore(row.id, 'M', 'M')}
+                            >
+                              {isMiss ? <Check className="w-3 h-3" /> : <Minus className="w-2 h-2" />}
+                            </button>
+                          </div>
+                        )}
                       </td>
                       {row.cols.map((col, colIdx) => {
                         const score = getScore(row.id, colIdx, col);
                         const isOne = score === '1';
                         const isZero = score === '0';
                         const isN = score === 'N';
-                        const isDisabled = col === '-' || isNA || isMiss;
+                        const isDisabled = col === '-' || isNA || isMiss || row.criteriaBlocked;
 
                         return (
-                          <td key={colIdx} className={`px-1 py-2 border border-slate-200 ${col === '-' ? 'bg-pink-100' : ''}`}>
-                            {col !== '-' && (
+                          <td key={colIdx} className={`px-1 py-2 border border-slate-200 ${col === '-' || row.criteriaBlocked ? 'bg-pink-100' : ''}`}>
+                            {col !== '-' && !row.criteriaBlocked && (
                               <div className="flex justify-center">
                                 <button 
                                   className={`w-6 h-6 rounded-md border flex items-center justify-center text-[10px] font-bold transition-all active:scale-90 ${
@@ -496,7 +532,7 @@ export default function AuditFormOPD() {
                                   disabled={isDisabled}
                                   title={reasons[`${row.id}_${colIdx}`] ? `เหตุผล: ${reasons[`${row.id}_${colIdx}`]}` : ''}
                                 >
-                                  {isNA || isMiss ? '-' : score}
+                                  {isNA || isMiss ? '-' : (score === 'N' ? 'NA' : score)}
                                   {isZero && reasons[`${row.id}_${colIdx}`] && (
                                     <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border border-white" />
                                   )}
@@ -506,8 +542,38 @@ export default function AuditFormOPD() {
                           </td>
                         );
                       })}
-                      <td className="px-2 py-2 border border-slate-200 bg-pink-100"></td>
-                      <td className="px-2 py-2 border border-slate-200 bg-pink-100"></td>
+                      <td className={`px-1 py-1 border border-slate-200 ${row.bonusBlocked ? 'bg-pink-400/40' : 'bg-pink-100'}`}>
+                        {!row.bonusBlocked && !isNA && (
+                          <div className="flex justify-center">
+                            <button 
+                              className={`w-7 h-7 rounded-md border text-center text-[10px] font-bold transition-all active:scale-90 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 ${
+                                scores[`${row.id}_bonus`] === '1' 
+                                  ? 'bg-emerald-500 border-emerald-500 text-white' 
+                                  : 'bg-white border-slate-300 text-slate-700 hover:border-emerald-300'
+                              }`}
+                              onClick={() => setScores(prev => ({ ...prev, [`${row.id}_bonus`]: prev[`${row.id}_bonus`] === '1' ? '' : '1' }))}
+                            >
+                              {scores[`${row.id}_bonus`] || ''}
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                      <td className={`px-1 py-1 border border-slate-200 ${row.deductBlocked ? 'bg-pink-400/40' : 'bg-pink-100'}`}>
+                        {!row.deductBlocked && !isNA && (
+                          <div className="flex justify-center">
+                            <button 
+                              className={`w-7 h-7 rounded-md border text-center text-[10px] font-bold transition-all active:scale-90 focus:outline-none focus:ring-2 focus:ring-red-400/50 ${
+                                scores[`${row.id}_deduct`] === '1' 
+                                  ? 'bg-red-500 border-red-500 text-white' 
+                                  : 'bg-white border-slate-300 text-slate-700 hover:border-red-300'
+                              }`}
+                              onClick={() => setScores(prev => ({ ...prev, [`${row.id}_deduct`]: prev[`${row.id}_deduct`] === '1' ? '' : '1' }))}
+                            >
+                              {scores[`${row.id}_deduct`] || ''}
+                            </button>
+                          </div>
+                        )}
+                      </td>
                       <td className="px-2 py-2 border border-slate-200 text-center font-bold text-slate-700">{full}</td>
                       <td className="px-2 py-2 border border-slate-200 text-center font-bold text-blue-600">{earned}</td>
                       <td className="px-2 py-2 border border-slate-200">
@@ -530,7 +596,7 @@ export default function AuditFormOPD() {
                   </td>
                   <td className="px-2 py-2 text-center border border-slate-200 text-slate-700">{totalFull}</td>
                   <td colSpan={2} className="px-3 py-2 text-left border border-slate-200 text-slate-500 font-normal">
-                    คะแนน (ไม่น้อยกว่า 19 คะแนน สำหรับผู้ป่วยนอกทั่วไป /ฉุกเฉิน: General case)
+                    คะแนน (ไม่น้อยกว่า {minScoreGeneral} คะแนน สำหรับผู้ป่วยนอกทั่วไป /ฉุกเฉิน: General case)
                   </td>
                 </tr>
                 <tr>
@@ -539,7 +605,7 @@ export default function AuditFormOPD() {
                   </td>
                   <td className="px-2 py-2 text-center border border-slate-200 text-blue-600">{totalEarned}</td>
                   <td colSpan={2} className="px-3 py-2 text-left border border-slate-200 text-slate-500 font-normal">
-                    คะแนน (ไม่น้อยกว่า 24 คะแนน สำหรับผู้ป่วยนอกโรคเรื้อรัง : Chronic case ที่มีการตรวจ follow up อย่างน้อย 1 ครั้ง)
+                    คะแนน (ไม่น้อยกว่า {minScoreChronic} คะแนน สำหรับผู้ป่วยนอกโรคเรื้อรัง : Chronic case ที่มีการตรวจ follow up อย่างน้อย 1 ครั้ง)
                   </td>
                 </tr>
                 <tr>
@@ -600,6 +666,21 @@ export default function AuditFormOPD() {
               <p><span className="font-bold">คำอธิบาย:</span></p>
               <p>NA ไม่จำเป็นต้องมีบันทึก สำหรับการ Visit ครั้งนั้น</p>
               <p>Missing (M) ไม่มีเอกสารให้ตรวจสอบ เวชระเบียนไม่ครบ หรือหายไปบางส่วน</p>
+            </div>
+            
+            <div className="mt-6 flex justify-between items-center text-sm">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-slate-700">Audit by:</span>
+                <span className="text-slate-600 border-b border-slate-300 px-4 py-1 min-w-[200px] inline-block">
+                  {caseData.auditor_name || 'ผู้ตรวจสอบ'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-slate-700">Audit Date:</span>
+                <span className="text-slate-600 border-b border-slate-300 px-4 py-1 min-w-[150px] inline-block">
+                  {caseData.audit_date ? new Date(caseData.audit_date).toLocaleDateString('th-TH') : new Date().toLocaleDateString('th-TH')}
+                </span>
+              </div>
             </div>
           </div>
 

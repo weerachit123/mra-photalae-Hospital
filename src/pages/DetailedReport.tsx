@@ -13,27 +13,27 @@ const OPD_ROWS = [
   { id: '2', name: "History (1st visit)", cols: 7 },
   { id: '3', name: "Physical examination", cols: 7 },
   { id: '4', name: "Treatment/Investigation", cols: 7 },
-  { id: '5_1', name: "Follow up ครั้งที่ 1", cols: 5 },
-  { id: '5_2', name: "Follow up ครั้งที่ 2", cols: 5 },
-  { id: '5_3', name: "Follow up ครั้งที่ 3", cols: 5 },
-  { id: '6', name: "Operative note", cols: 5 },
-  { id: '7', name: "Informed consent", cols: 5 },
-  { id: '8', name: "Rehabilitation record", cols: 5 },
+  { id: '5_1', name: "Follow up ครั้งที่ 1", cols: 7 },
+  { id: '5_2', name: "Follow up ครั้งที่ 2", cols: 7 },
+  { id: '5_3', name: "Follow up ครั้งที่ 3", cols: 7 },
+  { id: '6', name: "Operative note", cols: 7 },
+  { id: '7', name: "Informed consent", cols: 7 },
+  { id: '8', name: "Rehabilitation record", cols: 7, blockedCols: [5, 6] },
 ];
 
 const IPD_ROWS = [
   { id: '1', name: "Discharge summary : Dx, Op", cols: 9 },
-  { id: '2', name: "Discharge summary : Other", cols: 7 },
-  { id: '3', name: "Informed consent", cols: 8 },
+  { id: '2', name: "Discharge summary : Other", cols: 9, blockedCols: [7, 8] },
+  { id: '3', name: "Informed consent", cols: 9 },
   { id: '4', name: "History", cols: 9 },
   { id: '5', name: "Physical examination", cols: 9 },
-  { id: '6', name: "Progress note", cols: 6 },
+  { id: '6', name: "Progress note", cols: 9 },
   { id: '7', name: "Consultation record", cols: 9 },
   { id: '8', name: "Anaesthetic record", cols: 9 },
   { id: '9', name: "Operative note", cols: 9 },
   { id: '10', name: "Labour record", cols: 9 },
   { id: '11', name: "Rehabilitation record", cols: 9 },
-  { id: '12', name: "Nurses' note helpful", cols: 5 },
+  { id: '12', name: "Nurses' note helpful", cols: 9 },
 ];
 
 interface Case {
@@ -56,6 +56,7 @@ interface Worksheet {
 
 export default function DetailedReport() {
   const [worksheets, setWorksheets] = useState<Worksheet[]>([]);
+  const [selectedYear, setSelectedYear] = useState<string>('all');
   const [selectedRound, setSelectedRound] = useState<string>('all');
   const [selectedDoctor, setSelectedDoctor] = useState<string>('all');
   const [reportType, setReportType] = useState<'OPD' | 'IPD'>('OPD');
@@ -80,38 +81,63 @@ export default function DetailedReport() {
     fetchWorksheets();
   }, []);
 
-  const rounds = useMemo(() => {
-    const uniqueRounds = Array.from(new Set(worksheets.map(w => w.name || 'Unknown')));
-    return uniqueRounds.sort();
+  const years = useMemo(() => {
+    const uniqueYears = new Set<string>();
+    worksheets.forEach(w => {
+      const match = w.name?.match(/\d{2}/);
+      if (match) uniqueYears.add(`25${match[0]}`);
+    });
+    return Array.from(uniqueYears).sort((a, b) => b.localeCompare(a));
   }, [worksheets]);
+
+  const rounds = useMemo(() => {
+    const filteredByYear = worksheets.filter(w => {
+      if (selectedYear === 'all') return true;
+      const match = w.name?.match(/\d{2}/);
+      return match && `25${match[0]}` === selectedYear;
+    });
+    const uniqueRounds = Array.from(new Set(filteredByYear.map(w => w.name || 'Unknown')));
+    return uniqueRounds.sort();
+  }, [worksheets, selectedYear]);
 
   const doctors = useMemo(() => {
     const docSet = new Set<string>();
     worksheets.forEach(ws => {
       if (ws.type === reportType) {
-        ws.cases.forEach(c => {
-          if (c.doctor_name) docSet.add(c.doctor_name);
-        });
+        let matchYear = true;
+        if (selectedYear !== 'all') {
+          const match = ws.name?.match(/\d{2}/);
+          matchYear = match && `25${match[0]}` === selectedYear;
+        }
+        if (matchYear) {
+          ws.cases.forEach(c => {
+            if (c.doctor_name) docSet.add(c.doctor_name);
+          });
+        }
       }
     });
     return Array.from(docSet).sort();
-  }, [worksheets, reportType]);
+  }, [worksheets, reportType, selectedYear]);
 
   const filteredWorksheets = useMemo(() => {
     return worksheets.filter(w => {
+      let matchYear = true;
+      if (selectedYear !== 'all') {
+        const match = w.name?.match(/\d{2}/);
+        matchYear = match && `25${match[0]}` === selectedYear;
+      }
       const matchRound = selectedRound === 'all' || (w.name || 'Unknown') === selectedRound;
       const matchType = w.type === reportType;
       
-      // If filtering by doctor, we still return the worksheet if it has ANY case by that doctor
-      // But we will filter the cases inside calculateMatrix
+      if (!matchYear || !matchRound || !matchType) return false;
+      
       if (selectedDoctor !== 'all') {
-        const hasDoctor = w.cases.some(c => c.doctor_name === selectedDoctor);
-        return matchRound && matchType && hasDoctor;
+        return w.cases.some(c => c.doctor_name === selectedDoctor);
       }
       
-      return matchRound && matchType;
+      return true;
     });
-  }, [worksheets, selectedRound, reportType, selectedDoctor]);
+  }, [worksheets, selectedYear, selectedRound, reportType, selectedDoctor]);
 
   const departments = useMemo(() => {
     const uniqueDepts = Array.from(new Set(filteredWorksheets.map(w => w.department || 'Unknown')));
@@ -124,11 +150,15 @@ export default function DetailedReport() {
     
     const counts: Record<string, number[]> = {};
     const totals: Record<string, number[]> = {};
+    const bonusCounts: Record<string, number> = {};
+    const deductCounts: Record<string, number> = {};
     let totalCases = 0;
 
     rows.forEach(r => {
       counts[r.id] = new Array(r.cols).fill(0);
       totals[r.id] = new Array(r.cols).fill(0);
+      bonusCounts[r.id] = 0;
+      deductCounts[r.id] = 0;
     });
 
     wsList.forEach(ws => {
@@ -137,13 +167,31 @@ export default function DetailedReport() {
         if (c.status === 'audited' && c.scores && matchDoctor) {
           totalCases++;
           rows.forEach(r => {
+            const isNA = c.scores?.[`${r.id}_NA`] === '1';
+            const isMiss = c.scores?.[`${r.id}_M`] === '1';
+            const isNo = c.scores?.[`${r.id}_O`] === '1';
+
+            if (isNA) return;
+
+            // Check bonus/deduct for this row
+            if (c.scores?.[`${r.id}_bonus`] === '1') bonusCounts[r.id]++;
+            if (c.scores?.[`${r.id}_deduct`] === '1') deductCounts[r.id]++;
+
             for (let i = 0; i < r.cols; i++) {
-              const val = c.scores?.[`${r.id}_${i}`];
-              if (val === '1') {
-                counts[r.id][i]++;
+              // Skip blocked columns
+              if (r.blockedCols?.includes(i)) continue;
+
+              if (isMiss || isNo) {
                 totals[r.id][i]++;
-              } else if (val === '0') {
-                totals[r.id][i]++;
+              } else {
+                // Default to '1' if not set, but only if not explicitly 'N' (NA)
+                const val = c.scores?.[`${r.id}_${i}`] || '1';
+                if (val === '1') {
+                  counts[r.id][i]++;
+                  totals[r.id][i]++;
+                } else if (val === '0') {
+                  totals[r.id][i]++;
+                }
               }
             }
           });
@@ -151,7 +199,7 @@ export default function DetailedReport() {
       });
     });
 
-    return { counts, totals, totalCases, maxCols };
+    return { counts, totals, bonusCounts, deductCounts, totalCases, maxCols };
   };
 
   const overallMatrix = useMemo(() => calculateMatrix(filteredWorksheets), [filteredWorksheets, reportType]);
@@ -177,7 +225,7 @@ export default function DetailedReport() {
         for (let i = 0; i < r.cols; i++) {
           row[`ข้อ ${i + 1}`] = overallMatrix.counts[r.id][i];
         }
-        const earned = overallMatrix.counts[r.id].reduce((a, b) => a + b, 0);
+        const earned = overallMatrix.counts[r.id].reduce((a, b) => a + b, 0) + overallMatrix.bonusCounts[r.id] - overallMatrix.deductCounts[r.id];
         const total = overallMatrix.totals[r.id].reduce((a, b) => a + b, 0);
         row['คะแนนเต็ม'] = total;
         row['คะแนนที่ได้'] = earned;
@@ -196,7 +244,7 @@ export default function DetailedReport() {
           for (let i = 0; i < r.cols; i++) {
             row[`ข้อ ${i + 1}`] = m.counts[r.id][i];
           }
-          const earned = m.counts[r.id].reduce((a, b) => a + b, 0);
+          const earned = m.counts[r.id].reduce((a, b) => a + b, 0) + m.bonusCounts[r.id] - m.deductCounts[r.id];
           const total = m.totals[r.id].reduce((a, b) => a + b, 0);
           row['คะแนนเต็ม'] = total;
           row['คะแนนที่ได้'] = earned;
@@ -241,9 +289,9 @@ export default function DetailedReport() {
         ...overallMatrix.counts[r.id].map(v => v.toString()),
         ...new Array(overallMatrix.maxCols - r.cols).fill('-'),
         overallMatrix.totals[r.id].reduce((a, b) => a + b, 0).toString(),
-        overallMatrix.counts[r.id].reduce((a, b) => a + b, 0).toString(),
+        (overallMatrix.counts[r.id].reduce((a, b) => a + b, 0) + overallMatrix.bonusCounts[r.id] - overallMatrix.deductCounts[r.id]).toString(),
         (overallMatrix.totals[r.id].reduce((a, b) => a + b, 0) > 0 
-          ? (overallMatrix.counts[r.id].reduce((a, b) => a + b, 0) / overallMatrix.totals[r.id].reduce((a, b) => a + b, 0) * 100).toFixed(1) 
+          ? ((overallMatrix.counts[r.id].reduce((a, b) => a + b, 0) + overallMatrix.bonusCounts[r.id] - overallMatrix.deductCounts[r.id]) / overallMatrix.totals[r.id].reduce((a, b) => a + b, 0) * 100).toFixed(1) 
           : '0.0') + '%'
       ]);
 
@@ -265,7 +313,7 @@ export default function DetailedReport() {
 
   const renderMatrixTable = (title: string, matrix: any, subTitle?: string) => {
     const rows = reportType === 'OPD' ? OPD_ROWS : IPD_ROWS;
-    const { counts, totals, totalCases, maxCols } = matrix;
+    const { counts, totals, bonusCounts, deductCounts, totalCases, maxCols } = matrix;
 
     return (
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-8 break-inside-avoid">
@@ -277,7 +325,7 @@ export default function DetailedReport() {
           <div className="grid grid-cols-1 lg:grid-cols-2 divide-x divide-slate-100">
             {/* Counts Table */}
             <div className="p-4">
-              <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-3">จำนวนเวชระเบียนที่ผ่านเกณฑ์ (เคส)</p>
+              <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-3">สรุปคะแนนที่ได้แยกตามหัวข้อ (คะแนน)</p>
               <table className="w-full text-[10px]">
                 <thead>
                   <tr className="text-slate-400 font-bold uppercase tracking-widest border-b border-slate-100">
@@ -292,7 +340,7 @@ export default function DetailedReport() {
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {rows.map(r => {
-                    const earned = counts[r.id].reduce((a: number, b: number) => a + b, 0);
+                    const earned = counts[r.id].reduce((a: number, b: number) => a + b, 0) + bonusCounts[r.id] - deductCounts[r.id];
                     const total = totals[r.id].reduce((a: number, b: number) => a + b, 0);
                     const pct = total > 0 ? (earned / total) * 100 : 0;
                     return (
@@ -316,7 +364,7 @@ export default function DetailedReport() {
 
             {/* Percentage Table */}
             <div className="p-4">
-              <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-3">ร้อยละเวชระเบียนที่ผ่านเกณฑ์ (%)</p>
+              <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-3">ร้อยละคะแนนที่ผ่านเกณฑ์ (%)</p>
               <table className="w-full text-[10px]">
                 <thead>
                   <tr className="text-slate-400 font-bold uppercase tracking-widest border-b border-slate-100">
@@ -329,7 +377,7 @@ export default function DetailedReport() {
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {rows.map(r => {
-                    const earned = counts[r.id].reduce((a: number, b: number) => a + b, 0);
+                    const earned = counts[r.id].reduce((a: number, b: number) => a + b, 0) + bonusCounts[r.id] - deductCounts[r.id];
                     const total = totals[r.id].reduce((a: number, b: number) => a + b, 0);
                     const overallPct = total > 0 ? (earned / total) * 100 : 0;
                     return (
@@ -401,6 +449,21 @@ export default function DetailedReport() {
       <div className="flex flex-wrap gap-3 print:hidden">
         <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm">
           <Calendar className="w-4 h-4 text-slate-400" />
+          <select 
+            value={selectedYear} 
+            onChange={(e) => {
+              setSelectedYear(e.target.value);
+              setSelectedRound('all');
+            }}
+            className="text-xs font-bold text-slate-700 focus:outline-none bg-transparent"
+          >
+            <option value="all">ทุกปีงบประมาณ</option>
+            {years.map(y => <option key={y} value={y}>ปี {y}</option>)}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm">
+          <FileBarChart className="w-4 h-4 text-slate-400" />
           <select 
             value={selectedRound} 
             onChange={(e) => setSelectedRound(e.target.value)}

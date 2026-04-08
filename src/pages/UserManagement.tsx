@@ -41,9 +41,11 @@ const ALL_DEPARTMENTS = [
 
 export default function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [hosUsers, setHosUsers] = useState<any[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
+  const [newLoginname, setNewLoginname] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newDepartments, setNewDepartments] = useState<string[]>([]);
+  const [newUserPassword, setNewUserPassword] = useState('');
+  const [isAddingUser, setIsAddingUser] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [departmentAccess, setDepartmentAccess] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -70,40 +72,41 @@ export default function UserManagement() {
     }
   };
 
-  const handleSearchHos = async () => {
-    if (searchQuery.length < 2) return;
-    setIsSearching(true);
-    try {
-      const response = await fetch(`/api/hos-users/search?q=${encodeURIComponent(searchQuery)}`);
-      const data = await response.json();
-      if (data.success) setHosUsers(data.users);
-    } catch (error) {
-      console.error('Search failed:', error);
-    } finally {
-      setIsSearching(false);
+  const handleAddUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newLoginname || !newName || newDepartments.length === 0 || !newUserPassword) {
+      alert('กรุณากรอกข้อมูลให้ครบถ้วน และเลือกอย่างน้อย 1 แผนก');
+      return;
     }
-  };
-
-  const handleAddUser = async (hosUser: any) => {
+    setIsAddingUser(true);
     try {
       const response = await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          loginname: hosUser.loginname,
-          name: hosUser.name,
-          department: hosUser.department,
-          role: 'user'
+          loginname: newLoginname,
+          name: newName,
+          departments: newDepartments,
+          role: 'user',
+          password: newUserPassword
         })
       });
       const data = await response.json();
       if (data.success) {
         fetchUsers();
-        setSearchQuery('');
-        setHosUsers([]);
+        setNewLoginname('');
+        setNewName('');
+        setNewDepartments([]);
+        setNewUserPassword('');
+        alert('เพิ่มผู้ใช้งานเรียบร้อยแล้ว');
+      } else {
+        alert(`ไม่สามารถเพิ่มผู้ใช้งานได้: ${data.message}`);
       }
     } catch (error) {
       console.error('Failed to add user:', error);
+      alert('เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์');
+    } finally {
+      setIsAddingUser(false);
     }
   };
 
@@ -309,53 +312,77 @@ export default function UserManagement() {
 
         {/* Right: Add User & Access */}
         <div className="space-y-6">
-          {/* Add User from HosXP - Only for Super Admins */}
+          {/* Add User - Only for Super Admins */}
           {isSuperAdmin ? (
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
               <h2 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
                 <UserPlus className="w-5 h-5 text-blue-600" />
-                เพิ่มผู้ใช้งานจาก HosXP
+                เพิ่มผู้ใช้งานใหม่
               </h2>
-              <div className="flex gap-2 mb-4">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <form onSubmit={handleAddUser} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Login Name (Username)</label>
                   <input 
                     type="text"
-                    placeholder="ค้นหา Loginname หรือ ชื่อ..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSearchHos()}
-                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    value={newLoginname}
+                    onChange={(e) => setNewLoginname(e.target.value)}
+                    placeholder="เช่น admin, user01"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">ชื่อ-นามสกุล</label>
+                  <input 
+                    type="text"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="ชื่อ นามสกุล"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-2">แผนกหลัก (เลือกได้มากกว่า 1)</label>
+                  <div className="grid grid-cols-1 gap-1 max-h-48 overflow-y-auto p-2 border border-slate-200 rounded-xl bg-slate-50">
+                    {ALL_DEPARTMENTS.map(dep => (
+                      <label key={dep} className="flex items-center p-2 rounded-lg hover:bg-slate-100 cursor-pointer transition-colors">
+                        <input 
+                          type="checkbox"
+                          checked={newDepartments.includes(dep)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setNewDepartments([...newDepartments, dep]);
+                            } else {
+                              setNewDepartments(newDepartments.filter(d => d !== dep));
+                            }
+                          }}
+                          className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 mr-3"
+                        />
+                        <span className="text-sm text-slate-700">{dep}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">รหัสผ่าน</label>
+                  <input 
+                    type="password"
+                    value={newUserPassword}
+                    onChange={(e) => setNewUserPassword(e.target.value)}
+                    placeholder="กำหนดรหัสผ่าน"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    required
                   />
                 </div>
                 <button 
-                  onClick={handleSearchHos}
-                  disabled={isSearching || searchQuery.length < 2}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                  type="submit"
+                  disabled={isAddingUser}
+                  className="w-full py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 disabled:opacity-50 transition-colors"
                 >
-                  ค้นหา
+                  {isAddingUser ? 'กำลังเพิ่ม...' : 'เพิ่มผู้ใช้งาน'}
                 </button>
-              </div>
-
-              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
-                {hosUsers.map((hu) => (
-                  <div key={hu.loginname} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold text-slate-700">{hu.name}</span>
-                      <span className="text-[10px] text-slate-400">{hu.loginname} | {hu.department}</span>
-                    </div>
-                    <button 
-                      onClick={() => handleAddUser(hu)}
-                      className="p-1.5 bg-white text-blue-600 border border-blue-100 rounded-lg hover:bg-blue-600 hover:text-white transition-all"
-                    >
-                      <UserPlus className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-                {hosUsers.length === 0 && searchQuery.length >= 2 && !isSearching && (
-                  <p className="text-center text-xs text-slate-400 py-4">ไม่พบข้อมูลผู้ใช้งาน</p>
-                )}
-              </div>
+              </form>
             </div>
           ) : (
             <div className="bg-blue-50 rounded-2xl border border-blue-100 p-6">

@@ -12,6 +12,7 @@ import DashboardStats from './pages/DashboardStats';
 import DetailedReport from './pages/DetailedReport';
 import MemorandumReport from './pages/MemorandumReport';
 import UserManual from './pages/UserManual';
+import ManageDepartments from './pages/ManageDepartments';
 
 import EditCriteria from './pages/EditCriteria';
 import UserManagement from './pages/UserManagement';
@@ -50,6 +51,7 @@ export default function App() {
           <Route path="audit-opd/form/:hn" element={<AuditFormOPD />} />
           <Route path="audit-ipd" element={<AuditIPD />} />
           <Route path="audit-ipd/form/:an" element={<AuditFormIPD />} />
+          <Route path="departments" element={<ManageDepartments />} />
           <Route path="edit-criteria" element={<EditCriteria />} />
           <Route path="users" element={<UserManagement />} />
           <Route path="manual" element={<UserManual />} />

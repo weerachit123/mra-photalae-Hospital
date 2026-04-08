@@ -36,18 +36,39 @@ export default function AuditOPD() {
   const [startDate, setStartDate] = useState('2023-07-01');
   const [endDate, setEndDate] = useState('2023-09-30');
   const [selectedDep, setSelectedDep] = useState(DEPARTMENTS[6].code); // Default to 042
+  const [criteriaYear, setCriteriaYear] = useState('2557');
   const [limit, setLimit] = useState(DEPARTMENTS[6].defaultLimit);
   const [cases, setCases] = useState<AuditCase[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [isMock, setIsMock] = useState(false);
+  const [specificVn, setSpecificVn] = useState('');
+  const [isSearchingVn, setIsSearchingVn] = useState(false);
 
   // New states for Worksheet Name
-  const defaultWorksheets = ['Audit 6901', 'Audit 6902', 'Audit 6903', 'Audit 6904'];
+  const defaultWorksheets = ['Audit OPD 6901', 'Audit OPD 6902', 'Audit OPD 6903', 'Audit OPD 6904'];
   const [worksheetNames, setWorksheetNames] = useState<string[]>(() => {
     const saved = localStorage.getItem('mra_worksheet_names');
-    return saved ? JSON.parse(saved) : defaultWorksheets;
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Migration: Update any old default names to the new format
+      const oldDefaults = ['Audit 6901', 'Audit 6902', 'Audit 6903', 'Audit 6904'];
+      const hasOldDefaults = parsed.some((name: string) => oldDefaults.includes(name));
+      
+      if (hasOldDefaults) {
+        const migrated = parsed.map((name: string) => {
+          if (oldDefaults.includes(name)) {
+            return name.replace('Audit ', 'Audit OPD ');
+          }
+          return name;
+        });
+        localStorage.setItem('mra_worksheet_names', JSON.stringify(migrated));
+        return migrated;
+      }
+      return parsed;
+    }
+    return defaultWorksheets;
   });
   const [selectedWorksheet, setSelectedWorksheet] = useState(worksheetNames[0]);
   const [isAddingWorksheet, setIsAddingWorksheet] = useState(false);
@@ -120,6 +141,28 @@ export default function AuditOPD() {
     }
   };
 
+  const handleSearchSpecificVn = async (index: number) => {
+    if (!specificVn.trim()) return;
+    setIsSearchingVn(true);
+    try {
+      const response = await fetch(`/api/audit/opd/vn/${specificVn.trim()}`);
+      const data = await response.json();
+      
+      if (data.success && data.data) {
+        const newCases = [...cases];
+        newCases[index] = data.data;
+        setCases(newCases);
+        setSpecificVn(''); // Clear after success
+      } else {
+        alert(data.message || 'ไม่พบข้อมูล VN นี้');
+      }
+    } catch (err) {
+      alert('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้');
+    } finally {
+      setIsSearchingVn(false);
+    }
+  };
+
   const refreshSingleCase = async (index: number) => {
     try {
       const response = await fetch('/api/audit/opd/random', {
@@ -159,6 +202,7 @@ export default function AuditOPD() {
       name: selectedWorksheet,
       type: 'OPD',
       department: depName,
+      criteria_year: criteriaYear,
       createdAt: new Date().toISOString(),
       cases: cases.map(c => ({ ...c, status: 'pending' }))
     };
@@ -203,59 +247,74 @@ export default function AuditOPD() {
         <div className="p-8">
           {/* Worksheet Selection */}
           <div className="mb-8 bg-slate-50 p-6 rounded-2xl border border-slate-200">
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">ชื่อใบงาน / รอบการประเมิน</label>
-            <div className="flex items-center flex-wrap gap-3">
-              {!isAddingWorksheet ? (
-                <>
-                  <select
-                    value={selectedWorksheet}
-                    onChange={(e) => setSelectedWorksheet(e.target.value)}
-                    className="w-72 border border-slate-200 rounded-xl shadow-sm px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white text-sm font-semibold text-slate-700 transition-all"
-                  >
-                    {worksheetNames.map(name => (
-                      <option key={name} value={name}>{name}</option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={() => setIsAddingWorksheet(true)}
-                    className="flex items-center text-sm bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold px-4 py-2.5 rounded-xl shadow-sm transition-all active:scale-95"
-                  >
-                    <Plus className="w-4 h-4 mr-2 text-blue-600" /> เพิ่มชื่อใบงาน
-                  </button>
-                  <button
-                    onClick={() => handleDeleteWorksheet(selectedWorksheet)}
-                    className="flex items-center text-sm bg-white border border-slate-200 text-slate-400 hover:text-red-600 hover:bg-red-50 font-bold px-4 py-2.5 rounded-xl shadow-sm transition-all ml-auto active:scale-95"
-                  >
-                    <X className="w-4 h-4 mr-2" /> ลบชื่อนี้
-                  </button>
-                </>
-              ) : (
-                <>
-                  <input
-                    type="text"
-                    value={newWorksheetName}
-                    onChange={(e) => setNewWorksheetName(e.target.value)}
-                    placeholder="เช่น Audit 7001"
-                    className="w-72 border border-slate-200 rounded-xl shadow-sm px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white text-sm font-semibold transition-all"
-                    autoFocus
-                  />
-                  <button
-                    onClick={handleAddWorksheet}
-                    className="bg-blue-600 text-white px-6 py-2.5 rounded-xl hover:bg-blue-700 text-sm font-bold shadow-md shadow-blue-200 transition-all active:scale-95"
-                  >
-                    บันทึก
-                  </button>
-                  <button
-                    onClick={() => {
-                      setIsAddingWorksheet(false);
-                      setNewWorksheetName('');
-                    }}
-                    className="bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 px-6 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all active:scale-95"
-                  >
-                    ยกเลิก
-                  </button>
-                </>
-              )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">ชื่อใบงาน / รอบการประเมิน</label>
+                <div className="flex items-center flex-wrap gap-3">
+                  {!isAddingWorksheet ? (
+                    <>
+                      <select
+                        value={selectedWorksheet}
+                        onChange={(e) => setSelectedWorksheet(e.target.value)}
+                        className="w-72 border border-slate-200 rounded-xl shadow-sm px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white text-sm font-semibold text-slate-700 transition-all"
+                      >
+                        {worksheetNames.map(name => (
+                          <option key={name} value={name}>{name}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => setIsAddingWorksheet(true)}
+                        className="flex items-center text-sm bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold px-4 py-2.5 rounded-xl shadow-sm transition-all active:scale-95"
+                      >
+                        <Plus className="w-4 h-4 mr-2 text-blue-600" /> เพิ่มชื่อใบงาน
+                      </button>
+                      <button
+                        onClick={() => handleDeleteWorksheet(selectedWorksheet)}
+                        className="flex items-center text-sm bg-white border border-slate-200 text-slate-400 hover:text-red-600 hover:bg-red-50 font-bold px-4 py-2.5 rounded-xl shadow-sm transition-all ml-auto active:scale-95"
+                      >
+                        <X className="w-4 h-4 mr-2" /> ลบชื่อนี้
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        value={newWorksheetName}
+                        onChange={(e) => setNewWorksheetName(e.target.value)}
+                        placeholder="เช่น Audit OPD 7001"
+                        className="w-72 border border-slate-200 rounded-xl shadow-sm px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white text-sm font-semibold transition-all"
+                        autoFocus
+                      />
+                      <button
+                        onClick={handleAddWorksheet}
+                        className="bg-blue-600 text-white px-6 py-2.5 rounded-xl hover:bg-blue-700 text-sm font-bold shadow-md shadow-blue-200 transition-all active:scale-95"
+                      >
+                        บันทึก
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsAddingWorksheet(false);
+                          setNewWorksheetName('');
+                        }}
+                        className="bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 px-6 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all active:scale-95"
+                      >
+                        ยกเลิก
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">เกณฑ์การประเมิน</label>
+                <select
+                  value={criteriaYear}
+                  onChange={(e) => setCriteriaYear(e.target.value)}
+                  className="w-full md:w-72 border border-slate-200 rounded-xl shadow-sm px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white text-sm font-semibold text-slate-700 transition-all"
+                >
+                  <option value="2557">เกณฑ์ปี 2557</option>
+                  <option value="2563">เกณฑ์ปี 2563</option>
+                </select>
+              </div>
             </div>
           </div>
 
@@ -379,13 +438,36 @@ export default function AuditOPD() {
                         {c.doctor_name}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <button
-                          onClick={() => refreshSingleCase(index)}
-                          title="สุ่มเปลี่ยนเคสนี้"
-                          className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all active:scale-90 opacity-0 group-hover:opacity-100"
-                        >
-                          <RefreshCw className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center">
+                            <input
+                              type="text"
+                              placeholder="ระบุ VN..."
+                              className="w-24 px-2 py-1 text-xs border border-slate-200 rounded-l-lg focus:outline-none focus:border-blue-500"
+                              onChange={(e) => setSpecificVn(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleSearchSpecificVn(index);
+                                }
+                              }}
+                            />
+                            <button
+                              onClick={() => handleSearchSpecificVn(index)}
+                              disabled={isSearchingVn}
+                              className="px-2 py-1 bg-blue-50 text-blue-600 border border-l-0 border-blue-100 rounded-r-lg hover:bg-blue-100 disabled:opacity-50"
+                              title="ค้นหา VN เจาะจง"
+                            >
+                              <Search className="w-3 h-3" />
+                            </button>
+                          </div>
+                          <button
+                            onClick={() => refreshSingleCase(index)}
+                            title="สุ่มเปลี่ยนเคสนี้"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all active:scale-90"
+                          >
+                            <RefreshCw className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))

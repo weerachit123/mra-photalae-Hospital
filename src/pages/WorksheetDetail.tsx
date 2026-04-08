@@ -23,6 +23,7 @@ export default function WorksheetDetail() {
   const [worksheet, setWorksheet] = useState<Worksheet | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [replaceInputs, setReplaceInputs] = useState<Record<number, string>>({});
 
   useEffect(() => {
     // Check admin role from localStorage
@@ -73,6 +74,57 @@ export default function WorksheetDetail() {
       }
     }
   }, [worksheet, user, navigate]);
+
+  const handleReplaceInputChange = (index: number, value: string) => {
+    setReplaceInputs(prev => ({ ...prev, [index]: value }));
+  };
+
+  const replaceSpecificCase = async (index: number) => {
+    if (!worksheet) return;
+    const isOPD = worksheet.type === 'OPD';
+    const identifier = replaceInputs[index]?.trim();
+    
+    if (!identifier) {
+      alert(`กรุณาระบุ ${isOPD ? 'VN' : 'AN'}`);
+      return;
+    }
+
+    if (!window.confirm(`ต้องการเปลี่ยนเป็นเคส ${identifier} ใช่หรือไม่? (ข้อมูลการประเมินเดิมจะหายไป)`)) return;
+
+    try {
+      const endpoint = isOPD ? `/api/audit/opd/vn/${identifier}` : `/api/audit/ipd/an/${identifier}`;
+      const response = await fetch(endpoint);
+      const data = await response.json();
+
+      if (data.success && data.data) {
+        const updatedWorksheet = { ...worksheet };
+        updatedWorksheet.cases[index] = { ...data.data, status: 'pending' };
+        
+        const updateResponse = await fetch(`/api/mra/worksheets`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedWorksheet)
+        });
+        const updateData = await updateResponse.json();
+
+        if (updateData.success) {
+          setWorksheet(updatedWorksheet);
+          setReplaceInputs(prev => {
+            const next = { ...prev };
+            delete next[index];
+            return next;
+          });
+        } else {
+          alert('Failed to update worksheet');
+        }
+      } else {
+        alert(`ไม่พบข้อมูล ${isOPD ? 'VN' : 'AN'} นี้`);
+      }
+    } catch (error) {
+      console.error('Failed to replace case:', error);
+      alert('เกิดข้อผิดพลาดในการดึงข้อมูล');
+    }
+  };
 
   const refreshCase = async (index: number) => {
     if (!worksheet) return;
@@ -187,17 +239,17 @@ export default function WorksheetDetail() {
         </div>
 
         <div className="p-0">
-          <div className="overflow-x-auto">
+          <div className="overflow-hidden">
             <table className="min-w-full divide-y divide-slate-200">
               <thead className="bg-slate-50">
                 <tr>
-                  <th scope="col" className="px-8 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">ลำดับ</th>
-                  <th scope="col" className="px-8 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">HN</th>
-                  {!isOPD && <th scope="col" className="px-8 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">AN</th>}
-                  <th scope="col" className="px-8 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">วันที่รับบริการ</th>
-                  <th scope="col" className="px-8 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">แพทย์</th>
-                  <th scope="col" className="px-8 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">สถานะ</th>
-                  <th scope="col" className="px-8 py-4 text-right text-[10px] font-bold text-slate-500 uppercase tracking-widest">การจัดการ</th>
+                  <th scope="col" className="px-4 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">ลำดับ</th>
+                  <th scope="col" className="px-4 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">HN</th>
+                  {!isOPD && <th scope="col" className="px-4 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">AN</th>}
+                  <th scope="col" className="px-4 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">วันที่รับบริการ</th>
+                  <th scope="col" className="px-4 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">แพทย์</th>
+                  <th scope="col" className="px-4 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">สถานะ</th>
+                  <th scope="col" className="px-4 py-4 text-right text-[10px] font-bold text-slate-500 uppercase tracking-widest">การจัดการ</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-slate-100">
@@ -209,12 +261,12 @@ export default function WorksheetDetail() {
 
                   return (
                     <tr key={index} className={`group transition-colors ${isAudited ? 'bg-emerald-50/20' : 'hover:bg-slate-50'}`}>
-                      <td className="px-8 py-5 whitespace-nowrap text-sm font-bold text-slate-400">{index + 1}</td>
-                      <td className="px-8 py-5 whitespace-nowrap text-sm font-bold text-slate-800">{c.hn}</td>
-                      {!isOPD && <td className="px-8 py-5 whitespace-nowrap text-sm font-bold text-blue-600">{c.an}</td>}
-                      <td className="px-8 py-5 whitespace-nowrap text-sm font-semibold text-slate-600">{isOPD ? c.vstdate : c.regdate}</td>
-                      <td className="px-8 py-5 whitespace-nowrap text-sm font-semibold text-slate-600">{c.doctor_name}</td>
-                      <td className="px-8 py-5 whitespace-nowrap">
+                      <td className="px-4 py-5 whitespace-nowrap text-sm font-bold text-slate-400">{index + 1}</td>
+                      <td className="px-4 py-5 whitespace-nowrap text-sm font-bold text-slate-800">{c.hn}</td>
+                      {!isOPD && <td className="px-4 py-5 whitespace-nowrap text-sm font-bold text-blue-600">{c.an}</td>}
+                      <td className="px-4 py-5 text-sm font-semibold text-slate-600">{isOPD ? c.vstdate : c.regdate}</td>
+                      <td className="px-4 py-5 text-sm font-semibold text-slate-600">{c.doctor_name}</td>
+                      <td className="px-4 py-5 whitespace-nowrap">
                         {isAudited ? (
                           <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
                             <CheckCircle className="w-3 h-3 mr-1.5" /> ประเมินแล้ว
@@ -225,20 +277,37 @@ export default function WorksheetDetail() {
                           </span>
                         )}
                       </td>
-                      <td className="px-8 py-5 whitespace-nowrap text-right">
+                      <td className="px-4 py-5 whitespace-nowrap text-right">
                         <div className="flex items-center justify-end gap-2">
                           {isAdmin && (
-                            <button
-                              onClick={() => refreshCase(index)}
-                              title="สุ่มเปลี่ยนเคสใหม่"
-                              className="p-2 rounded-xl text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all active:scale-95 border border-transparent hover:border-blue-100"
-                            >
-                              <RefreshCw className="w-4 h-4" />
-                            </button>
+                            <>
+                              <div className="flex items-center bg-white border border-slate-200 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500">
+                                <input
+                                  type="text"
+                                  placeholder={`ระบุ ${isOPD ? 'VN' : 'AN'}...`}
+                                  value={replaceInputs[index] || ''}
+                                  onChange={(e) => handleReplaceInputChange(index, e.target.value)}
+                                  className="w-24 px-2 py-1.5 text-xs outline-none"
+                                />
+                                <button
+                                  onClick={() => replaceSpecificCase(index)}
+                                  className="px-2 py-1.5 bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-600 font-medium text-xs border-l border-slate-200 transition-colors"
+                                >
+                                  เปลี่ยน
+                                </button>
+                              </div>
+                              <button
+                                onClick={() => refreshCase(index)}
+                                title="สุ่มเปลี่ยนเคสใหม่"
+                                className="p-2 rounded-xl text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all active:scale-95 border border-transparent hover:border-blue-100"
+                              >
+                                <RefreshCw className="w-4 h-4" />
+                              </button>
+                            </>
                           )}
                           <Link 
                             to={formPath}
-                            state={c}
+                            state={{ ...c, criteria_year: worksheet.criteria_year || '2557' }}
                             className={`inline-flex items-center px-4 py-2 rounded-xl text-xs font-bold transition-all active:scale-95 shadow-sm ${
                               isAudited 
                                 ? 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50' 

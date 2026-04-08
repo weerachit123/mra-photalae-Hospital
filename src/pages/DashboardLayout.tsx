@@ -1,6 +1,6 @@
 import React from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
-import { LogOut, FileText, Home, Users, Settings, LayoutDashboard, ClipboardCheck, ClipboardList, Printer, BookOpen } from 'lucide-react';
+import { LogOut, FileText, Home, Users, Settings, LayoutDashboard, ClipboardCheck, ClipboardList, Printer, BookOpen, Building2 } from 'lucide-react';
 
 export default function DashboardLayout() {
   const navigate = useNavigate();
@@ -24,7 +24,8 @@ export default function DashboardLayout() {
   const menuItems = [
     { path: '/dashboard/stats', label: 'Dashboard สรุปผล', icon: LayoutDashboard },
     { path: '/dashboard/report', label: 'รายงานละเอียด', icon: FileText },
-    { path: '/dashboard/worksheets', label: 'รายการใบงาน', icon: ClipboardList },
+    { path: '/dashboard/worksheets?year=2557', label: 'รายการใบงาน เกณฑ์ 2557', icon: ClipboardList },
+    { path: '/dashboard/worksheets?year=2563', label: 'รายการใบงาน เกณฑ์ 2563', icon: ClipboardList },
   ];
 
   const adminItems = [
@@ -33,7 +34,9 @@ export default function DashboardLayout() {
       { path: '/dashboard/audit-ipd', label: 'Audit IPD (สร้างใบงาน)', icon: ClipboardCheck },
     ] : []),
     { path: '/dashboard/memorandum', label: 'ปริ้นสรุป เสนอเซ็น', icon: Printer },
-    { path: '/dashboard/edit-criteria', label: 'ตั้งค่าเกณฑ์ประเมิน', icon: Settings },
+    { path: '/dashboard/departments', label: 'จัดการแผนกหลัก', icon: Building2 },
+    { path: '/dashboard/edit-criteria?year=2557', label: 'ตั้งค่าเกณฑ์การประเมิน 2557', icon: Settings },
+    { path: '/dashboard/edit-criteria?year=2563', label: 'ตั้งค่าเกณฑ์การประเมิน 2563', icon: Settings },
     { path: '/dashboard/users', label: 'จัดการผู้ใช้งาน', icon: Users },
   ];
 
@@ -152,6 +155,17 @@ export default function DashboardLayout() {
           </div>
         </main>
       </div>
+
+      {/* Footer */}
+      <footer className="bg-white border-t border-slate-200 py-6 mt-auto">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row justify-center items-center gap-2 text-slate-500 text-sm font-medium">
+            <span>© 2026 photalae Hospital</span>
+            <span className="hidden md:inline text-slate-300">|</span>
+            <span>Created by Weerachit Klinhom Mrs37</span>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

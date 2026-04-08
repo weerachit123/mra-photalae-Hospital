@@ -93,7 +93,7 @@ async function initMraPool(config: any = mraDbConfig) {
     if (mraPool) await mraPool.end();
     mraPool = mysql.createPool({
       ...config,
-      charset: config.charset || 'utf8mb4'
+      charset: 'utf8mb4'
     });
     console.log('MRA MySQL pool initialized');
     return true;
@@ -127,6 +127,12 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json());
+
+  // Request logger
+  app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
+    next();
+  });
 
   // --- API Routes ---
 
@@ -206,21 +212,74 @@ async function startServer() {
       if (mraPool) await mraPool.end();
       mraPool = mysql.createPool({
         ...connectionConfig,
-        database: config.database || 'mra_audit'
+        database: config.database || 'mra_audit',
+        charset: 'utf8mb4'
       });
       
       const connection = await mraPool.getConnection();
       try {
+        await connection.query(`
+          CREATE TABLE IF NOT EXISTS departments (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            code VARCHAR(50) NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            type ENUM('OPD', 'IPD') NOT NULL,
+            default_limit INT DEFAULT 10,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY code_type (code, type)
+          )
+        `);
+
+        // Insert default departments if table is empty
+        const [deptRows]: any = await connection.query('SELECT COUNT(*) as count FROM departments');
+        if (deptRows[0].count === 0) {
+          const defaultDepts = [
+            // OPD
+            { code: '001', name: 'อายุรกรรม', type: 'OPD', limit: 10 },
+            { code: '002', name: 'ศัลยกรรม', type: 'OPD', limit: 10 },
+            { code: '003', name: 'สูติ-นรีเวชกรรม', type: 'OPD', limit: 10 },
+            { code: '004', name: 'กุมารเวชกรรม', type: 'OPD', limit: 10 },
+            { code: '005', name: 'ศัลยกรรมกระดูก', type: 'OPD', limit: 10 },
+            { code: '011', name: 'จักษุ', type: 'OPD', limit: 10 },
+            { code: '042', name: 'ทันตกรรม', type: 'OPD', limit: 10 },
+            { code: '012', name: 'โสต ศอ นาสิก', type: 'OPD', limit: 10 },
+            { code: '016', name: 'เวชกรรมฟื้นฟู', type: 'OPD', limit: 10 },
+            { code: '017', name: 'แพทย์แผนไทย', type: 'OPD', limit: 10 },
+            // IPD
+            { code: '01', name: 'ตึกผู้ป่วยในชาย', type: 'IPD', limit: 10 },
+            { code: '02', name: 'ตึกผู้ป่วยในหญิง', type: 'IPD', limit: 10 },
+            { code: '03', name: 'ตึกสูติ-นรีเวช', type: 'IPD', limit: 10 },
+            { code: '04', name: 'ตึกกุมารเวช', type: 'IPD', limit: 10 },
+            { code: '05', name: 'ICU', type: 'IPD', limit: 10 },
+          ];
+          for (const d of defaultDepts) {
+            await connection.query(
+              'INSERT INTO departments (code, name, type, default_limit) VALUES (?, ?, ?, ?)',
+              [d.code, d.name, d.type, d.limit]
+            );
+          }
+        }
+
         await connection.query(`
           CREATE TABLE IF NOT EXISTS worksheets (
             id VARCHAR(50) PRIMARY KEY,
             name VARCHAR(255) NOT NULL,
             type ENUM('OPD', 'IPD') NOT NULL,
             department VARCHAR(255) NOT NULL,
+            criteria_year VARCHAR(4) DEFAULT '2557',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           )
         `);
         
+        // Add criteria_year column if it doesn't exist
+        try {
+          await connection.query(`ALTER TABLE worksheets ADD COLUMN criteria_year VARCHAR(4) DEFAULT '2557'`);
+        } catch (e: any) {
+          if (e.code !== 'ER_DUP_FIELDNAME') {
+            console.error('Error adding criteria_year column:', e);
+          }
+        }
+
         await connection.query(`
           CREATE TABLE IF NOT EXISTS audit_cases (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -233,9 +292,27 @@ async function startServer() {
             regdate DATE,
             dchdate DATE,
             vstdate DATE,
+            auditor_name VARCHAR(255),
+            audit_date DATETIME,
             FOREIGN KEY (worksheet_id) REFERENCES worksheets(id) ON DELETE CASCADE
           )
         `);
+        
+        // Add auditor_name and audit_date columns if they don't exist
+        try {
+          await connection.query(`ALTER TABLE audit_cases ADD COLUMN auditor_name VARCHAR(255)`);
+        } catch (e: any) {
+          if (e.code !== 'ER_DUP_FIELDNAME') {
+            console.error('Error adding auditor_name column:', e);
+          }
+        }
+        try {
+          await connection.query(`ALTER TABLE audit_cases ADD COLUMN audit_date DATETIME`);
+        } catch (e: any) {
+          if (e.code !== 'ER_DUP_FIELDNAME') {
+            console.error('Error adding audit_date column:', e);
+          }
+        }
         
         await connection.query(`
           CREATE TABLE IF NOT EXISTS audit_scores (
@@ -475,6 +552,145 @@ async function startServer() {
     }
   });
 
+  // Get specific VN for OPD
+  app.get('/api/audit/opd/vn/:vn', async (req, res) => {
+    if (!hosPool) {
+      return res.status(500).json({ success: false, message: 'HOS Database not connected' });
+    }
+
+    const { vn } = req.params;
+
+    try {
+      const query = `
+        SELECT 
+          v.hn,
+          v.vstdate,
+          d.name as doctor_name
+        FROM vn_stat v
+        LEFT JOIN doctor d ON v.dx_doctor = d.code
+        WHERE v.vn = ?
+      `;
+
+      const [rows] = await hosPool.query<mysql.RowDataPacket[]>(query, [vn]);
+
+      if (rows.length > 0) {
+        const row = rows[0];
+        const formattedCase = {
+          hn: row.hn,
+          vstdate: row.vstdate ? new Date(row.vstdate).toISOString().split('T')[0] : '',
+          doctor_name: row.doctor_name || 'ไม่ระบุแพทย์'
+        };
+        res.json({ success: true, data: formattedCase });
+      } else {
+        res.json({ success: false, message: 'ไม่พบข้อมูล VN นี้' });
+      }
+    } catch (error: any) {
+      console.error('Error fetching specific VN:', error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // Get specific AN for IPD
+  app.get('/api/audit/ipd/an/:an', async (req, res) => {
+    if (!hosPool) {
+      return res.status(500).json({ success: false, message: 'HOS Database not connected' });
+    }
+
+    const { an } = req.params;
+
+    try {
+      const query = `
+        SELECT 
+          i.hn,
+          i.an,
+          i.regdate,
+          i.dchdate,
+          d.name as doctor_name
+        FROM ipt i
+        LEFT JOIN doctor d ON i.dch_doctor = d.code
+        WHERE i.an = ?
+      `;
+
+      const [rows] = await hosPool.query<mysql.RowDataPacket[]>(query, [an]);
+
+      if (rows.length > 0) {
+        const row = rows[0];
+        const formattedCase = {
+          hn: row.hn,
+          an: row.an,
+          regdate: row.regdate ? new Date(row.regdate).toISOString().split('T')[0] : '',
+          dchdate: row.dchdate ? new Date(row.dchdate).toISOString().split('T')[0] : '',
+          doctor_name: row.doctor_name || 'ไม่ระบุแพทย์'
+        };
+        res.json({ success: true, data: formattedCase });
+      } else {
+        res.json({ success: false, message: 'ไม่พบข้อมูล AN นี้' });
+      }
+    } catch (error: any) {
+      console.error('Error fetching specific AN:', error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // --- Departments API ---
+  app.get('/api/departments', async (req, res) => {
+    if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
+    try {
+      const [departments] = await mraPool.execute<mysql.RowDataPacket[]>('SELECT * FROM departments ORDER BY type DESC, code ASC');
+      res.json({ success: true, data: departments });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  app.post('/api/departments', async (req, res) => {
+    if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
+    const { code, name, type, default_limit } = req.body;
+    try {
+      await mraPool.execute(
+        'INSERT INTO departments (code, name, type, default_limit) VALUES (?, ?, ?, ?)',
+        [code, name, type, default_limit || 10]
+      );
+      res.json({ success: true, message: 'เพิ่มแผนกสำเร็จ' });
+    } catch (error: any) {
+      if (error.code === 'ER_DUP_ENTRY') {
+        res.status(400).json({ success: false, message: 'รหัสแผนกซ้ำในประเภทนี้' });
+      } else {
+        res.status(500).json({ success: false, message: error.message });
+      }
+    }
+  });
+
+  app.put('/api/departments/:id', async (req, res) => {
+    if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
+    const { id } = req.params;
+    const { code, name, type, default_limit } = req.body;
+    try {
+      await mraPool.execute(
+        'UPDATE departments SET code = ?, name = ?, type = ?, default_limit = ? WHERE id = ?',
+        [code, name, type, default_limit || 10, id]
+      );
+      res.json({ success: true, message: 'แก้ไขแผนกสำเร็จ' });
+    } catch (error: any) {
+      if (error.code === 'ER_DUP_ENTRY') {
+        res.status(400).json({ success: false, message: 'รหัสแผนกซ้ำในประเภทนี้' });
+      } else {
+        res.status(500).json({ success: false, message: error.message });
+      }
+    }
+  });
+
+  app.delete('/api/departments/:id', async (req, res) => {
+    if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
+    const { id } = req.params;
+    try {
+      await mraPool.execute('DELETE FROM departments WHERE id = ?', [id]);
+      res.json({ success: true, message: 'ลบแผนกสำเร็จ' });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
   // --- User Management API ---
 
   // List all local users
@@ -497,36 +713,46 @@ async function startServer() {
     }
   });
 
-  // Search users from HosXP
-  app.get('/api/hos-users/search', async (req, res) => {
-    if (!hosPool) return res.status(500).json({ success: false, message: 'HOS Database not connected' });
-    const query = req.query.q as string;
-    if (!query || query.length < 2) return res.json({ success: true, users: [] });
-
-    try {
-      const [rows] = await hosPool.execute(
-        'SELECT loginname, name, department FROM opduser WHERE (loginname LIKE ? OR name LIKE ?) AND (account_disable IS NULL OR account_disable <> "Y") LIMIT 20',
-        [`%${query}%`, `%${query}%`]
-      );
-      res.json({ success: true, users: rows });
-    } catch (error: any) {
-      res.status(500).json({ success: false, message: error.message });
-    }
-  });
-
   // Add user to local system
   app.post('/api/users', async (req, res) => {
     if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
-    const { loginname, name, department, role, password } = req.body;
+    const { loginname, name, departments, role, password } = req.body;
+    
+    // Fallback for old clients sending 'department' string
+    const depsArray = departments || (req.body.department ? [req.body.department] : []);
+    const mainDepartment = depsArray.length > 0 ? depsArray[0] : null;
+    const displayDepartment = depsArray.join(', ');
+
+    const connection = await mraPool.getConnection();
     try {
+      await connection.beginTransaction();
+
       const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
-      await mraPool.execute(
+      
+      await connection.execute(
         'INSERT INTO users (loginname, name, department, role, password) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=?, department=?, role=?, password=COALESCE(?, password)',
-        [loginname, name, department, role, hashedPassword, name, department, role, hashedPassword]
+        [loginname, name, displayDepartment, role || 'user', hashedPassword, name, displayDepartment, role || 'user', hashedPassword]
       );
+
+      // Insert into user_department_access
+      await connection.execute('DELETE FROM user_department_access WHERE loginname = ?', [loginname]);
+      
+      if (depsArray.length > 0) {
+        for (const dep of depsArray) {
+          await connection.execute(
+            'INSERT INTO user_department_access (loginname, department_name) VALUES (?, ?)',
+            [loginname, dep]
+          );
+        }
+      }
+
+      await connection.commit();
       res.json({ success: true, message: 'เพิ่มผู้ใช้งานเรียบร้อยแล้ว' });
     } catch (error: any) {
+      await connection.rollback();
       res.status(500).json({ success: false, message: error.message });
+    } finally {
+      connection.release();
     }
   });
 
@@ -727,9 +953,16 @@ async function startServer() {
 
       const [worksheets] = await mraPool.query<mysql.RowDataPacket[]>(query + ' ORDER BY created_at DESC', params);
       
-      for (const ws of worksheets) {
-        const [cases] = await mraPool.query<mysql.RowDataPacket[]>('SELECT * FROM audit_cases WHERE worksheet_id = ?', [ws.id]);
-        ws.cases = cases;
+      if (worksheets.length > 0) {
+        const wsIds = worksheets.map(w => w.id);
+        const [allCases] = await mraPool.query<mysql.RowDataPacket[]>(
+          'SELECT * FROM audit_cases WHERE worksheet_id IN (?)', 
+          [wsIds]
+        );
+        
+        worksheets.forEach(ws => {
+          ws.cases = allCases.filter(c => c.worksheet_id === ws.id);
+        });
       }
       
       res.json({ success: true, data: worksheets });
@@ -772,13 +1005,18 @@ async function startServer() {
       const ws = worksheets[0];
       const [cases] = await mraPool.query<mysql.RowDataPacket[]>('SELECT * FROM audit_cases WHERE worksheet_id = ?', [ws.id]);
       
-      // Fetch scores and reasons for each case
-      for (const c of cases) {
-        const [scores] = await mraPool.query<mysql.RowDataPacket[]>('SELECT criteria_key, score FROM audit_scores WHERE case_id = ?', [c.id]);
-        const [reasons] = await mraPool.query<mysql.RowDataPacket[]>('SELECT criteria_key, reason FROM audit_reasons WHERE case_id = ?', [c.id]);
+      if (cases.length > 0) {
+        const caseIds = cases.map(c => c.id);
+        const [allScores] = await mraPool.query<mysql.RowDataPacket[]>('SELECT case_id, criteria_key, score FROM audit_scores WHERE case_id IN (?)', [caseIds]);
+        const [allReasons] = await mraPool.query<mysql.RowDataPacket[]>('SELECT case_id, criteria_key, reason FROM audit_reasons WHERE case_id IN (?)', [caseIds]);
         
-        c.scores = scores.reduce((acc, curr) => ({ ...acc, [curr.criteria_key]: curr.score }), {});
-        c.reasons = reasons.reduce((acc, curr) => ({ ...acc, [curr.criteria_key]: curr.reason }), {});
+        cases.forEach(c => {
+          const caseScores = allScores.filter(s => s.case_id === c.id);
+          const caseReasons = allReasons.filter(r => r.case_id === c.id);
+          
+          c.scores = caseScores.reduce((acc, curr) => ({ ...acc, [curr.criteria_key]: curr.score }), {});
+          c.reasons = caseReasons.reduce((acc, curr) => ({ ...acc, [curr.criteria_key]: curr.reason }), {});
+        });
       }
       
       ws.cases = cases;
@@ -834,7 +1072,10 @@ async function startServer() {
         const caseId = cases[0].id;
         
         // Update case status
-        await connection.query('UPDATE audit_cases SET status = ? WHERE id = ?', [status, caseId]);
+        await connection.query(
+          'UPDATE audit_cases SET status = ?, auditor_name = ?, audit_date = ? WHERE id = ?', 
+          [status, req.body.auditor_name || null, req.body.audit_date ? new Date(req.body.audit_date) : null, caseId]
+        );
         
         // Save scores
         await connection.query('DELETE FROM audit_scores WHERE case_id = ?', [caseId]);
@@ -886,7 +1127,7 @@ async function startServer() {
       return await saveToJson();
     }
     
-    const { id, name, type, department, cases } = req.body;
+    const { id, name, type, department, criteria_year, cases } = req.body;
     
     try {
       const connection = await mraPool.getConnection();
@@ -894,8 +1135,8 @@ async function startServer() {
       
       try {
         await connection.query(
-          'INSERT INTO worksheets (id, name, type, department) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=?, type=?, department=?',
-          [id, name, type, department, name, type, department]
+          'INSERT INTO worksheets (id, name, type, department, criteria_year) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=?, type=?, department=?, criteria_year=?',
+          [id, name, type, department, criteria_year || '2557', name, type, department, criteria_year || '2557']
         );
         
         await connection.query('DELETE FROM audit_cases WHERE worksheet_id = ?', [id]);
@@ -959,6 +1200,20 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
+
+  // Global error handler
+  app.use((err: any, req: any, res: any, next: any) => {
+    console.error('Unhandled Express Error:', err);
+    res.status(500).json({ success: false, message: 'Internal Server Error: ' + err.message });
+  });
 }
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
 
 startServer();

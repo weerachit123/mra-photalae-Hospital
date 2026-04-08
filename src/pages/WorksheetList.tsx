@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { FileText, Calendar, Users } from 'lucide-react';
 
 interface Worksheet {
@@ -7,6 +7,7 @@ interface Worksheet {
   name: string;
   type: 'OPD' | 'IPD';
   department: string;
+  criteria_year?: string;
   createdAt: string;
   cases: any[];
 }
@@ -14,6 +15,10 @@ interface Worksheet {
 export default function WorksheetList() {
   const [worksheets, setWorksheets] = useState<Worksheet[]>([]);
   const [activeTab, setActiveTab] = useState<'ALL' | 'OPD' | 'IPD'>('ALL');
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const targetYear = queryParams.get('year') || '2557';
+  
   const userStr = localStorage.getItem('user');
   const user = userStr ? JSON.parse(userStr) : null;
 
@@ -62,9 +67,12 @@ export default function WorksheetList() {
 
   // Permission logic: Backend already filters based on role and user_worksheet_access.
   // We just show what the API returns.
-  const filteredWorksheets = activeTab === 'ALL' 
-    ? worksheets 
-    : worksheets.filter(ws => ws.type === activeTab);
+  const filteredWorksheets = worksheets.filter(ws => {
+    const wsYear = ws.criteria_year || '2557';
+    if (wsYear !== targetYear) return false;
+    if (activeTab !== 'ALL' && ws.type !== activeTab) return false;
+    return true;
+  });
 
   // Group by name (Round)
   const groupedWorksheets = filteredWorksheets.reduce((acc, ws) => {
@@ -84,7 +92,7 @@ export default function WorksheetList() {
         <div className="px-8 py-6 border-b border-slate-100 bg-white flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
           <div>
             <h3 className="text-2xl font-bold text-slate-800 tracking-tight">
-              รายการใบงาน (Worksheets)
+              รายการใบงาน เกณฑ์ {targetYear}
             </h3>
             <p className="mt-1 text-sm text-slate-500 font-medium">
               เลือกใบงานที่ต้องการเพื่อเริ่มทำการประเมินเวชระเบียน

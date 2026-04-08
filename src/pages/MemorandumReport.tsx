@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Printer, Settings, Save, ChevronDown, ChevronUp, FileText, Calendar, Building2, User, BarChart3, Table as TableIcon, ListChecks } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList, ReferenceLine } from 'recharts';
+import { useReactToPrint } from 'react-to-print';
 
 interface Case {
   hn: string;
@@ -22,17 +23,17 @@ interface Worksheet {
 
 const IPD_ROWS = [
   { id: '1', name: "Discharge summary : Dx, Op", cols: 9 },
-  { id: '2', name: "Discharge summary : Other", cols: 7 },
-  { id: '3', name: "Informed consent", cols: 8 },
+  { id: '2', name: "Discharge summary : Other", cols: 9, blockedCols: [7, 8] },
+  { id: '3', name: "Informed consent", cols: 9 },
   { id: '4', name: "History", cols: 9 },
   { id: '5', name: "Physical examination", cols: 9 },
-  { id: '6', name: "Progress note", cols: 6 },
+  { id: '6', name: "Progress note", cols: 9 },
   { id: '7', name: "Consultation record", cols: 9 },
   { id: '8', name: "Anaesthetic record", cols: 9 },
   { id: '9', name: "Operative note", cols: 9 },
   { id: '10', name: "Labour record", cols: 9 },
   { id: '11', name: "Rehabilitation record", cols: 9 },
-  { id: '12', name: "Nurses' note helpful", cols: 5 },
+  { id: '12', name: "Nurses' note helpful", cols: 9 },
 ];
 
 const OPD_ROWS = [
@@ -40,12 +41,12 @@ const OPD_ROWS = [
   { id: '2', name: "History (1st visit)", cols: 7 },
   { id: '3', name: "Physical examination", cols: 7 },
   { id: '4', name: "Treatment/Investigation", cols: 7 },
-  { id: '5_1', name: "Follow up ครั้งที่ 1", cols: 5 },
-  { id: '5_2', name: "Follow up ครั้งที่ 2", cols: 5 },
-  { id: '5_3', name: "Follow up ครั้งที่ 3", cols: 5 },
-  { id: '6', name: "Operative note", cols: 5 },
-  { id: '7', name: "Informed consent", cols: 5 },
-  { id: '8', name: "Rehabilitation record *", cols: 5 },
+  { id: '5_1', name: "Follow up ครั้งที่ 1", cols: 7 },
+  { id: '5_2', name: "Follow up ครั้งที่ 2", cols: 7 },
+  { id: '5_3', name: "Follow up ครั้งที่ 3", cols: 7 },
+  { id: '6', name: "Operative note", cols: 7 },
+  { id: '7', name: "Informed consent", cols: 7 },
+  { id: '8', name: "Rehabilitation record *", cols: 7, blockedCols: [5, 6] },
 ];
 
 interface MemoSettings {
@@ -60,6 +61,7 @@ interface MemoSettings {
   approverName: string;
   approverPosition: string;
   labourDeptName: string;
+  customLogo?: string;
 }
 
 const DEFAULT_SETTINGS: MemoSettings = {
@@ -73,7 +75,8 @@ const DEFAULT_SETTINGS: MemoSettings = {
   proposerPosition: "นักวิชาการสาธารณสุข (เวชสถิติ)",
   approverName: "นายพนม ปทุมสูติ",
   approverPosition: "ผู้อำนวยการโรงพยาบาลโพทะเล",
-  labourDeptName: "ห้องคลอด"
+  labourDeptName: "ห้องคลอด",
+  customLogo: ""
 };
 
 export default function MemorandumReport() {
@@ -86,9 +89,11 @@ export default function MemorandumReport() {
   }
 
   const [worksheets, setWorksheets] = useState<Worksheet[]>([]);
+  const [selectedYear, setSelectedYear] = useState<string>('all');
   const [selectedRound, setSelectedRound] = useState<string>('all');
   const [settings, setSettings] = useState<MemoSettings>(DEFAULT_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
+  const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchWorksheets = async () => {
@@ -121,17 +126,36 @@ export default function MemorandumReport() {
     setShowSettings(false);
   };
 
-  const rounds = useMemo(() => {
-    const uniqueRounds = Array.from(new Set(worksheets.map(w => w.name || 'Unknown')));
-    return uniqueRounds.sort();
+  const years = useMemo(() => {
+    const uniqueYears = new Set<string>();
+    worksheets.forEach(w => {
+      const match = w.name?.match(/\d{2}/);
+      if (match) uniqueYears.add(`25${match[0]}`);
+    });
+    return Array.from(uniqueYears).sort((a, b) => b.localeCompare(a));
   }, [worksheets]);
+
+  const rounds = useMemo(() => {
+    const filteredByYear = worksheets.filter(w => {
+      if (selectedYear === 'all') return true;
+      const match = w.name?.match(/\d{2}/);
+      return match && `25${match[0]}` === selectedYear;
+    });
+    const uniqueRounds = Array.from(new Set(filteredByYear.map(w => w.name || 'Unknown')));
+    return uniqueRounds.sort();
+  }, [worksheets, selectedYear]);
 
   const filteredWorksheets = useMemo(() => {
     return worksheets.filter(w => {
+      let matchYear = true;
+      if (selectedYear !== 'all') {
+        const match = w.name?.match(/\d{2}/);
+        matchYear = match && `25${match[0]}` === selectedYear;
+      }
       const matchRound = selectedRound === 'all' || (w.name || 'Unknown') === selectedRound;
-      return matchRound;
+      return matchYear && matchRound;
     });
-  }, [worksheets, selectedRound]);
+  }, [worksheets, selectedYear, selectedRound]);
 
   const stats = useMemo(() => {
     // IPD Stats
@@ -177,24 +201,53 @@ export default function MemorandumReport() {
             else ipdCases++;
 
             IPD_ROWS.forEach(r => {
-              for (let i = 0; i < r.cols; i++) {
-                const val = c.scores?.[`${r.id}_${i}`];
-                if (val === '1') {
-                  totalIpdEarned++;
-                  if (isLabour) labourEarned++;
-                  else ipdEarned++;
-                  ipdCriteriaStats[r.id].earned[i]++;
-                  ipdCriteriaStats[r.id].total[i]++;
-                } else if (val === '0') {
-                  totalIpdPossible++;
-                  if (isLabour) labourPossible++;
-                  else ipdPossible++;
-                  ipdCriteriaStats[r.id].total[i]++;
+              const isNA = c.scores?.[`${r.id}_NA`] === '1';
+              const isMiss = c.scores?.[`${r.id}_M`] === '1';
+              const isNo = c.scores?.[`${r.id}_O`] === '1';
 
+              if (isNA) return;
+
+              // Handle bonus/deduct for IPD
+              if (c.scores?.[`${r.id}_bonus`] === '1') {
+                totalIpdEarned++;
+                if (isLabour) labourEarned++;
+                else ipdEarned++;
+              }
+              if (c.scores?.[`${r.id}_deduct`] === '1') {
+                totalIpdEarned--;
+                if (isLabour) labourEarned--;
+                else ipdEarned--;
+              }
+
+              for (let i = 0; i < r.cols; i++) {
+                // Skip blocked columns
+                if ((r as any).blockedCols?.includes(i)) continue;
+
+                totalIpdPossible++;
+                if (isLabour) labourPossible++;
+                else ipdPossible++;
+                ipdCriteriaStats[r.id].total[i]++;
+
+                if (isMiss || isNo) {
                   const reason = c.reasons?.[`${r.id}_${i}`];
                   if (reason) {
                     if (!ipdImprovements[r.name]) ipdImprovements[r.name] = [];
                     if (!ipdImprovements[r.name].includes(reason)) ipdImprovements[r.name].push(reason);
+                  }
+                } else {
+                  // Default to '1' if not set
+                  const val = c.scores?.[`${r.id}_${i}`] || '1';
+                  if (val === '1') {
+                    totalIpdEarned++;
+                    if (isLabour) labourEarned++;
+                    else ipdEarned++;
+                    ipdCriteriaStats[r.id].earned[i]++;
+                  } else if (val === '0') {
+                    const reason = c.reasons?.[`${r.id}_${i}`];
+                    if (reason) {
+                      if (!ipdImprovements[r.name]) ipdImprovements[r.name] = [];
+                      if (!ipdImprovements[r.name].includes(reason)) ipdImprovements[r.name].push(reason);
+                    }
                   }
                 }
               }
@@ -202,20 +255,44 @@ export default function MemorandumReport() {
           } else if (ws.type === 'OPD') {
             totalOpdCases++;
             OPD_ROWS.forEach(r => {
-              for (let i = 0; i < r.cols; i++) {
-                const val = c.scores?.[`${r.id}_${i}`];
-                if (val === '1') {
-                  totalOpdEarned++;
-                  opdCriteriaStats[r.id].earned[i]++;
-                  opdCriteriaStats[r.id].total[i]++;
-                } else if (val === '0') {
-                  totalOpdPossible++;
-                  opdCriteriaStats[r.id].total[i]++;
+              const isNA = c.scores?.[`${r.id}_NA`] === '1';
+              const isMiss = c.scores?.[`${r.id}_M`] === '1';
 
+              if (isNA) return;
+
+              // Handle bonus/deduct for OPD
+              if (c.scores?.[`${r.id}_bonus`] === '1') {
+                totalOpdEarned++;
+              }
+              if (c.scores?.[`${r.id}_deduct`] === '1') {
+                totalOpdEarned--;
+              }
+
+              for (let i = 0; i < r.cols; i++) {
+                // Skip blocked columns
+                if ((r as any).blockedCols?.includes(i)) continue;
+
+                totalOpdPossible++;
+                opdCriteriaStats[r.id].total[i]++;
+
+                if (isMiss) {
                   const reason = c.reasons?.[`${r.id}_${i}`];
                   if (reason) {
                     if (!opdImprovements[r.name]) opdImprovements[r.name] = [];
                     if (!opdImprovements[r.name].includes(reason)) opdImprovements[r.name].push(reason);
+                  }
+                } else {
+                  // Default to '1' if not set
+                  const val = c.scores?.[`${r.id}_${i}`] || '1';
+                  if (val === '1') {
+                    totalOpdEarned++;
+                    opdCriteriaStats[r.id].earned[i]++;
+                  } else if (val === '0') {
+                    const reason = c.reasons?.[`${r.id}_${i}`];
+                    if (reason) {
+                      if (!opdImprovements[r.name]) opdImprovements[r.name] = [];
+                      if (!opdImprovements[r.name].includes(reason)) opdImprovements[r.name].push(reason);
+                    }
                   }
                 }
               }
@@ -263,9 +340,21 @@ export default function MemorandumReport() {
     };
   }, [filteredWorksheets, settings.labourDeptName]);
 
-  const handlePrint = () => {
-    window.print();
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSettings({ ...settings, customLogo: reader.result as string });
+      };
+      reader.readAsDataURL(file);
+    }
   };
+
+  const handlePrint = useReactToPrint({
+    contentRef: printRef,
+    documentTitle: 'Memorandum_Report',
+  });
 
   return (
     <div className="space-y-6 pb-12">
@@ -440,6 +529,23 @@ export default function MemorandumReport() {
                   placeholder="เช่น ห้องคลอด"
                 />
               </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">อัปโหลดตราครุฑ (ถ้าไม่ขึ้น)</label>
+                <input 
+                  type="file" 
+                  accept="image/*"
+                  onChange={handleLogoUpload}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {settings.customLogo && (
+                  <button 
+                    onClick={() => setSettings({ ...settings, customLogo: '' })}
+                    className="mt-2 text-xs text-red-500 hover:text-red-700 font-bold"
+                  >
+                    ลบรูปที่อัปโหลด
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -449,6 +555,21 @@ export default function MemorandumReport() {
       <div className="flex flex-wrap gap-3 print-hidden">
         <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm">
           <Calendar className="w-4 h-4 text-slate-400" />
+          <select 
+            value={selectedYear} 
+            onChange={(e) => {
+              setSelectedYear(e.target.value);
+              setSelectedRound('all');
+            }}
+            className="text-xs font-bold text-slate-700 focus:outline-none bg-transparent"
+          >
+            <option value="all">ทุกปีงบประมาณ</option>
+            {years.map(y => <option key={y} value={y}>ปี {y}</option>)}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm">
+          <Settings className="w-4 h-4 text-slate-400" />
           <select 
             value={selectedRound} 
             onChange={(e) => setSelectedRound(e.target.value)}
@@ -461,14 +582,16 @@ export default function MemorandumReport() {
       </div>
 
       {/* Page 1: Memorandum Preview */}
-      <div className="bg-white shadow-lg border border-slate-200 mx-auto p-[1in] w-[210mm] min-h-[297mm] text-[#000] print-container memo-font">
-        <div className="relative">
+      <div ref={printRef} className="print-wrapper">
+        <div className="bg-white shadow-lg border border-slate-200 mx-auto p-[1in] w-[210mm] min-h-[297mm] text-[#000] print-container memo-font">
+          <div className="relative">
           {/* Garuda Logo - Standard size is 3cm x 3cm */}
           <div className="absolute top-0 left-0">
             <img 
-              src="https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/Garuda_Thailand.svg/1200px-Garuda_Thailand.svg.png" 
+              src={settings.customLogo || "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/Garuda_Thailand.svg/1200px-Garuda_Thailand.svg.png"} 
               alt="Garuda" 
               className="w-[30mm] h-[30mm] object-contain"
+              referrerPolicy="no-referrer"
             />
           </div>
           
@@ -770,6 +893,7 @@ export default function MemorandumReport() {
             </div>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

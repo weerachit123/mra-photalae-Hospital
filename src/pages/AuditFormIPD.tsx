@@ -94,19 +94,34 @@ function ReasonModal({ isOpen, onClose, onSave, criteriaKey, criteriaName }: Rea
   );
 }
 
-const ROWS = [
-  { id: '1', name: "Discharge summary : Dx., OP.", cols: ['1','1','1','1','1','1','1','1','1'] },
-  { id: '2', name: "Discharge summary : Other", cols: ['1','1','1','1','1','1','1','-','-'] },
-  { id: '3', name: "Informed consent", cols: ['1','1','1','1','1','1','1','1','-'] },
-  { id: '4', name: "History", cols: ['1','1','1','1','1','1','1','1','1'] },
-  { id: '5', name: "Physical exam", cols: ['1','1','1','1','1','1','1','1','1'] },
-  { id: '6', name: "Progress note", cols: ['1','1','1','1','1','1','-','-','-'] },
-  { id: '7', name: "Consultation record", cols: ['1','1','1','1','1','1','1','1','1'] },
-  { id: '8', name: "Anesthetic record", cols: ['1','1','1','1','1','1','1','1','1'] },
-  { id: '9', name: "Operative note", cols: ['1','1','1','1','1','1','1','1','1'] },
-  { id: '10', name: "Labour record", cols: ['1','1','1','1','1','1','1','1','1'] },
-  { id: '11', name: "Rehabilitation record", cols: ['1','1','1','1','1','1','1','1','1'] },
-  { id: '12', name: "Nurses' note helpful", cols: ['1','1','1','1','1','-','-','-','-'] },
+const ROWS_2557 = [
+  { id: '1', name: "Discharge summary : Dx., OP.", cols: ['1','1','1','1','1','1','1','1','1'], naBlocked: true, deductBlocked: true },
+  { id: '2', name: "Discharge summary : Other", cols: ['1','1','1','1','1','1','1','1','1'], naBlocked: true, deductBlocked: true },
+  { id: '3', name: "Informed consent", cols: ['1','1','1','1','1','1','1','1','1'], naBlocked: true, deductBlocked: true },
+  { id: '4', name: "History", cols: ['1','1','1','1','1','1','1','1','1'], naBlocked: true, deductBlocked: true },
+  { id: '5', name: "Physical exam", cols: ['1','1','1','1','1','1','1','1','1'], naBlocked: true, deductBlocked: true },
+  { id: '6', name: "Progress note", cols: ['1','1','1','1','1','1','1','1','1'], naBlocked: true, deductBlocked: true },
+  { id: '7', name: "Consultation record", cols: ['1','1','1','1','1','1','1','1','1'], naBlocked: false, deductBlocked: true },
+  { id: '8', name: "Anesthetic record", cols: ['1','1','1','1','1','1','1','1','1'], naBlocked: false, deductBlocked: true },
+  { id: '9', name: "Operative note", cols: ['1','1','1','1','1','1','1','1','1'], naBlocked: false, deductBlocked: true },
+  { id: '10', name: "Labour record", cols: ['1','1','1','1','1','1','1','1','1'], naBlocked: false, deductBlocked: true },
+  { id: '11', name: "Rehabilitation record", cols: ['1','1','1','1','1','1','1','1','1'], naBlocked: false, deductBlocked: true },
+  { id: '12', name: "Nurses' note helpful", cols: ['1','1','1','1','1','1','1','1','1'], naBlocked: true, deductBlocked: false },
+];
+
+const ROWS_2563 = [
+  { id: '1', name: "Discharge summary : Dx., OP.", cols: ['1','1','1','1','1','1','1','1','1'], naBlocked: true, deductBlocked: true },
+  { id: '2', name: "Discharge summary : Other", cols: ['1','1','1','1','1','1','1','1','1'], naBlocked: true, deductBlocked: true, blockedCols: [7, 8] },
+  { id: '3', name: "Informed consent", cols: ['1','1','1','1','1','1','1','1','1'], naBlocked: true, deductBlocked: true },
+  { id: '4', name: "History", cols: ['1','1','1','1','1','1','1','1','1'], naBlocked: true, deductBlocked: true },
+  { id: '5', name: "Physical exam", cols: ['1','1','1','1','1','1','1','1','1'], naBlocked: true, deductBlocked: true },
+  { id: '6', name: "Progress note", cols: ['1','1','1','1','1','1','1','1','1'], naBlocked: true, deductBlocked: true },
+  { id: '7', name: "Consultation record", cols: ['1','1','1','1','1','1','1','1','1'], naBlocked: false, deductBlocked: true },
+  { id: '8', name: "Anesthetic record", cols: ['1','1','1','1','1','1','1','1','1'], naBlocked: false, deductBlocked: true },
+  { id: '9', name: "Operative note*", cols: ['1','1','1','1','1','1','1','1','1'], naBlocked: false, deductBlocked: true },
+  { id: '10', name: "Labour record", cols: ['1','1','1','1','1','1','1','1','1'], naBlocked: false, deductBlocked: true },
+  { id: '11', name: "Rehabilitation record", cols: ['1','1','1','1','1','1','1','1','1'], naBlocked: false, deductBlocked: true },
+  { id: '12', name: "Nurses' note", cols: ['1','1','1','1','1','1','1','1','1'], naBlocked: true, deductBlocked: false },
 ];
 
 export default function AuditFormIPD() {
@@ -114,6 +129,9 @@ export default function AuditFormIPD() {
   const location = useLocation();
   const navigate = useNavigate();
   const caseData = location.state || {};
+  const criteriaYear = caseData.criteria_year || '2557';
+  const ROWS = criteriaYear === '2563' ? ROWS_2563 : ROWS_2557;
+  const minScore = criteriaYear === '2563' ? 57 : 63;
 
   const [scores, setScores] = useState<Record<string, string>>({});
   const [reasons, setCaseReasons] = useState<Record<string, string>>({});
@@ -135,7 +153,7 @@ export default function AuditFormIPD() {
   const [modalConfig, setModalConfig] = useState<{ isOpen: boolean; key: string; name: string } | null>(null);
 
   useEffect(() => {
-    setIpdCriteria(getIPDCriteria());
+    setIpdCriteria(getIPDCriteria(criteriaYear));
 
     // Check permission
     const userJson = localStorage.getItem('user');
@@ -241,7 +259,9 @@ export default function AuditFormIPD() {
       scores,
       reasons,
       remarks,
-      overallFindings
+      overallFindings,
+      auditor_name: caseData.auditor_name || JSON.parse(localStorage.getItem('user') || '{}').name,
+      audit_date: caseData.audit_date || new Date().toISOString()
     };
 
     try {
@@ -366,14 +386,14 @@ export default function AuditFormIPD() {
                   {[1,2,3,4,5,6,7,8,9].map(i => (
                     <th key={i} className="px-1 py-2 font-bold border-r border-white/20 w-8">เกณฑ์ ข้อ {i}</th>
                   ))}
-                  <th className="px-1 py-2 font-bold border-r border-white/20 w-10">หัก คะแนน</th>
-                  <th className="px-1 py-2 font-bold border-r border-white/20 w-10">รวม คะแนน</th>
+                  <th className="px-1 py-2 font-bold border-r border-white/20 w-10">หัก<br/>คะแนน</th>
+                  <th className="px-1 py-2 font-bold border-r border-white/20 w-16">รวม<br/>คะแนน</th>
                   <th className="px-2 py-2 font-bold w-24">หมาย เหตุ</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {ROWS.map((row) => {
-                  const isNA = getScore(row.id, 'NA', 'N') === '1';
+                  const isNA = !row.naBlocked && getScore(row.id, 'NA', 'N') === '1';
                   const isMissing = getScore(row.id, 'M', 'M') === '1';
                   const isNo = getScore(row.id, 'O', 'O') === '1';
                   
@@ -383,15 +403,29 @@ export default function AuditFormIPD() {
                   else if (isNo) rowBgClass = 'bg-amber-50/30';
 
                   // Scoring Logic
-                  const maxRowScore = row.cols.filter(c => c === '1').length;
-                  let deductScore = 0;
-                  row.cols.forEach((col, colIdx) => {
-                    if (col === '1' && getScore(row.id, colIdx, col) === '0') {
-                      deductScore++;
-                    }
-                  });
+                  let full = 0;
+                  let earned = 0;
                   
-                  const totalRowScore = isNA ? 0 : (maxRowScore - deductScore);
+                  if (!isNA) {
+                    row.cols.forEach((col, colIdx) => {
+                      if (col !== '-') {
+                        const score = getScore(row.id, colIdx, col);
+                        if (isMissing || isNo) {
+                          full += 1;
+                        } else {
+                          if (score === '1') {
+                            full += 1;
+                            earned += 1;
+                          } else if (score === '0') {
+                            full += 1;
+                          }
+                        }
+                      }
+                    });
+                    // Subtract Deduct from row earned score
+                    const deduct = scores[`${row.id}_deduct`] === '1' ? 1 : 0;
+                    earned -= deduct;
+                  }
 
                   return (
                     <tr key={row.id} className={`group transition-colors ${rowBgClass} hover:bg-slate-50/50`}>
@@ -399,14 +433,18 @@ export default function AuditFormIPD() {
                         {row.id}. {row.name}
                       </td>
                       <td className="px-0.5 py-1.5 border-r border-slate-100">
-                        <button 
-                          className={`w-5 h-5 mx-auto rounded border flex items-center justify-center transition-all ${
-                            isNA ? 'bg-slate-400 border-slate-400 text-white' : 'bg-white border-slate-200 text-slate-200'
-                          }`}
-                          onClick={() => toggleScore(row.id, 'NA', 'N')}
-                        >
-                          {isNA && <Check className="w-3 h-3" />}
-                        </button>
+                        {row.naBlocked ? (
+                          <div className="w-5 h-5 mx-auto rounded bg-pink-400/40 border border-pink-500/30"></div>
+                        ) : (
+                          <button 
+                            className={`w-5 h-5 mx-auto rounded border flex items-center justify-center transition-all ${
+                              isNA ? 'bg-slate-400 border-slate-400 text-white' : 'bg-white border-slate-200 text-slate-200'
+                            }`}
+                            onClick={() => toggleScore(row.id, 'NA', 'N')}
+                          >
+                            {isNA && <Check className="w-3 h-3" />}
+                          </button>
+                        )}
                       </td>
                       <td className="px-0.5 py-1.5 border-r border-slate-100">
                         <button 
@@ -433,40 +471,56 @@ export default function AuditFormIPD() {
                         const isOne = score === '1';
                         const isZero = score === '0';
                         const isN = score === 'N';
-                        const isDisabled = col === '-' || isNA || isMissing || isNo;
+                        const isBlocked = (row as any).blockedCols?.includes(colIdx);
+                        const isDisabled = col === '-' || isNA || isMissing || isNo || isBlocked;
 
                         return (
-                          <td key={colIdx} className="px-0.5 py-1.5 border-r border-slate-100">
-                            <button 
-                              className={`w-6 h-6 mx-auto rounded-md border flex items-center justify-center text-[10px] font-bold transition-all ${
-                                isDisabled 
-                                  ? 'bg-slate-100 border-slate-100 text-slate-300 cursor-not-allowed' 
-                                  : isOne 
-                                    ? 'bg-emerald-500 border-emerald-500 text-white' 
-                                    : isZero
-                                      ? 'bg-red-500 border-red-500 text-white'
-                                      : isN
-                                        ? 'bg-slate-400 border-slate-400 text-white'
-                                        : 'bg-white border-slate-200 text-slate-400'
-                              }`}
-                              onClick={() => toggleScore(row.id, colIdx, col)}
-                              onMouseEnter={() => !isDisabled && ipdCriteria[row.id]?.[colIdx] ? setHoveredCriteria(ipdCriteria[row.id][colIdx]) : null}
-                              onMouseLeave={() => setHoveredCriteria(null)}
-                              disabled={isDisabled}
-                            >
-                              {isNA ? '-' : score}
-                              {isZero && reasons[`${row.id}_${colIdx}`] && (
-                                <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border border-white" />
-                              )}
-                            </button>
+                          <td key={colIdx} className={`px-0.5 py-1.5 border-r border-slate-100 ${isBlocked ? 'bg-pink-400/40' : ''}`}>
+                            {!isBlocked && (
+                              <button 
+                                className={`w-6 h-6 mx-auto rounded-md border flex items-center justify-center text-[10px] font-bold transition-all ${
+                                  isDisabled 
+                                    ? 'bg-slate-100 border-slate-100 text-slate-300 cursor-not-allowed' 
+                                    : isOne 
+                                      ? 'bg-emerald-500 border-emerald-500 text-white' 
+                                      : isZero
+                                        ? 'bg-red-500 border-red-500 text-white'
+                                        : isN
+                                          ? 'bg-slate-400 border-slate-400 text-white'
+                                          : 'bg-white border-slate-200 text-slate-400'
+                                }`}
+                                onClick={() => toggleScore(row.id, colIdx, col)}
+                                onMouseEnter={() => !isDisabled && ipdCriteria[row.id]?.[colIdx] ? setHoveredCriteria(ipdCriteria[row.id][colIdx]) : null}
+                                onMouseLeave={() => setHoveredCriteria(null)}
+                                disabled={isDisabled}
+                              >
+                                {isNA ? '-' : (score === 'N' ? 'NA' : score)}
+                                {isZero && reasons[`${row.id}_${colIdx}`] && (
+                                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border border-white" />
+                                )}
+                              </button>
+                            )}
                           </td>
                         );
                       })}
-                      <td className="px-1 py-1.5 border-r border-slate-100 font-bold text-red-600">
-                        {isNA ? '-' : deductScore > 0 ? deductScore : ''}
+                      <td className={`px-1 py-1.5 border-r border-slate-100 ${row.deductBlocked ? 'bg-pink-400/40' : ''}`}>
+                        {!row.deductBlocked && !isNA && (
+                          <div className="flex justify-center">
+                            <button 
+                              className={`w-7 h-7 rounded-md border text-center text-[10px] font-bold transition-all active:scale-90 focus:outline-none focus:ring-2 focus:ring-red-400/50 ${
+                                scores[`${row.id}_deduct`] === '1' 
+                                  ? 'bg-red-500 border-red-500 text-white' 
+                                  : 'bg-white border-slate-300 text-slate-700 hover:border-red-300'
+                              }`}
+                              onClick={() => setScores(prev => ({ ...prev, [`${row.id}_deduct`]: prev[`${row.id}_deduct`] === '1' ? '' : '1' }))}
+                            >
+                              {scores[`${row.id}_deduct`] || ''}
+                            </button>
+                          </div>
+                        )}
                       </td>
                       <td className="px-1 py-1.5 border-r border-slate-100 font-bold text-blue-600">
-                        {isNA ? '-' : totalRowScore}
+                        {isNA ? '-' : `${earned}/${full}`}
                       </td>
                       <td className="px-1 py-1.5">
                         <input 
@@ -490,47 +544,77 @@ export default function AuditFormIPD() {
               <div className="flex items-center gap-2">
                 <span>Full score รวม:</span>
                 <span className="text-slate-900 underline decoration-dotted">
-                  {ROWS.reduce((acc, row) => {
-                    const isNA = getScore(row.id, 'NA', 'N') === '1';
-                    return acc + (isNA ? 0 : row.cols.filter(c => c === '1').length);
-                  }, 0)}
+                  {(() => {
+                    let tf = 0;
+                    ROWS.forEach(row => {
+                      const isRowNA = !row.naBlocked && getScore(row.id, 'NA', 'N') === '1';
+                      if (!isRowNA) {
+                        row.cols.forEach((col, colIdx) => {
+                          if (col !== '-') {
+                            const score = getScore(row.id, colIdx, col);
+                            if (score !== 'N') tf++;
+                          }
+                        });
+                      }
+                    });
+                    return tf;
+                  })()}
                 </span>
-                <span className="text-xs text-slate-500 font-normal">(ต้องไม่น้อยกว่า 63 คะแนน)</span>
+                <span className="text-xs text-slate-500 font-normal">(ต้องไม่น้อยกว่า {minScore} คะแนน)</span>
               </div>
               <div className="flex items-center gap-2">
                 <span>Sum score:</span>
                 <span className="text-blue-600 underline decoration-dotted">
-                  {ROWS.reduce((acc, row) => {
-                    const isNA = getScore(row.id, 'NA', 'N') === '1';
-                    if (isNA) return acc;
-                    const maxRowScore = row.cols.filter(c => c === '1').length;
-                    let deduct = 0;
-                    row.cols.forEach((col, colIdx) => {
-                      if (col === '1' && getScore(row.id, colIdx, col) === '0') deduct++;
+                  {(() => {
+                    let te = 0;
+                    ROWS.forEach(row => {
+                      const isRowNA = !row.naBlocked && getScore(row.id, 'NA', 'N') === '1';
+                      const isMissing = getScore(row.id, 'M', 'M') === '1';
+                      const isNo = getScore(row.id, 'O', 'O') === '1';
+                      if (!isRowNA && !isMissing && !isNo) {
+                        let rowEarned = 0;
+                        row.cols.forEach((col, colIdx) => {
+                          if (col !== '-' && getScore(row.id, colIdx, col) === '1') rowEarned++;
+                        });
+                        const deduct = Number(scores[`${row.id}_deduct`] || 0);
+                        te += (rowEarned - deduct);
+                      }
                     });
-                    return acc + (maxRowScore - deduct);
-                  }, 0)}
+                    return te;
+                  })()}
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <span>ร้อยละ:</span>
                 <span className="text-emerald-600 underline decoration-dotted">
                   {(() => {
-                    const full = ROWS.reduce((acc, row) => {
-                      const isNA = getScore(row.id, 'NA', 'N') === '1';
-                      return acc + (isNA ? 0 : row.cols.filter(c => c === '1').length);
-                    }, 0);
-                    const sum = ROWS.reduce((acc, row) => {
-                      const isNA = getScore(row.id, 'NA', 'N') === '1';
-                      if (isNA) return acc;
-                      const maxRowScore = row.cols.filter(c => c === '1').length;
-                      let deduct = 0;
-                      row.cols.forEach((col, colIdx) => {
-                        if (col === '1' && getScore(row.id, colIdx, col) === '0') deduct++;
-                      });
-                      return acc + (maxRowScore - deduct);
-                    }, 0);
-                    return full > 0 ? ((sum / full) * 100).toFixed(2) : '0.00';
+                    let tf = 0;
+                    let te = 0;
+                    ROWS.forEach(row => {
+                      const isRowNA = !row.naBlocked && getScore(row.id, 'NA', 'N') === '1';
+                      const isMissing = getScore(row.id, 'M', 'M') === '1';
+                      const isNo = getScore(row.id, 'O', 'O') === '1';
+                      
+                      if (!isRowNA) {
+                        let rowFull = 0;
+                        let rowEarned = 0;
+                        row.cols.forEach((col, colIdx) => {
+                          if (col !== '-') {
+                            const score = getScore(row.id, colIdx, col);
+                            if (score !== 'N') {
+                              rowFull++;
+                              if (!isMissing && !isNo && score === '1') rowEarned++;
+                            }
+                          }
+                        });
+                        tf += rowFull;
+                        if (!isMissing && !isNo) {
+                          const deduct = Number(scores[`${row.id}_deduct`] || 0);
+                          te += (rowEarned - deduct);
+                        }
+                      }
+                    });
+                    return tf > 0 ? ((te / tf) * 100).toFixed(2) : '0.00';
                   })()}%
                 </span>
               </div>
@@ -611,6 +695,21 @@ export default function AuditFormIPD() {
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-between items-center text-sm border-t border-slate-200 pt-4">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-slate-700">Audit by:</span>
+                <span className="text-slate-600 border-b border-slate-300 px-4 py-1 min-w-[200px] inline-block">
+                  {caseData.auditor_name || JSON.parse(localStorage.getItem('user') || '{}').name}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-slate-700">Audit Date:</span>
+                <span className="text-slate-600 border-b border-slate-300 px-4 py-1 min-w-[150px] inline-block">
+                  {caseData.audit_date ? new Date(caseData.audit_date).toLocaleDateString('th-TH') : new Date().toLocaleDateString('th-TH')}
+                </span>
               </div>
             </div>
           </div>
