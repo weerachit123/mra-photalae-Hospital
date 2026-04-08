@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import mysql from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
+import iconv from 'iconv-lite';
 
 // --- Database Configurations ---
 const CONFIG_FILE = path.join(process.cwd(), 'db_config.json');
@@ -73,7 +74,23 @@ async function initHosPool(config: any = hosDbConfig) {
     const charset = config.charset || 'tis620';
     hosPool = mysql.createPool({
       ...config,
-      charset: charset
+      charset: 'binary', // Force binary to get raw bytes
+      typeCast: function (field, next) {
+        if (field.type === 'VAR_STRING' || field.type === 'STRING' || field.type === 'BLOB' || field.type === 'TEXT') {
+          const buf = field.buffer();
+          if (buf) {
+            // Data is UTF-8 bytes interpreted as TIS-620, so we decode as UTF-8
+            // If that fails, try windows-874
+            try {
+              return iconv.decode(buf, 'utf8');
+            } catch (e) {
+              return iconv.decode(buf, 'windows-874');
+            }
+          }
+          return null;
+        }
+        return next();
+      }
     });
     
     // Test connection
@@ -471,7 +488,7 @@ async function startServer() {
       if (hosPool) {
         // 2. Check Authentication in HosXP
         const [hosRows] = await hosPool.execute<mysql.RowDataPacket[]>(
-          'SELECT loginname, CONVERT(CAST(name AS BINARY) USING tis620) as name, CONVERT(CAST(department AS BINARY) USING tis620) as department FROM opduser WHERE (loginname = ? OR loginname = ?) AND (password = MD5(?) OR password = MD5(UPPER(?))) AND (account_disable IS NULL OR account_disable <> "Y")',
+          'SELECT loginname, name, department FROM opduser WHERE (loginname = ? OR loginname = ?) AND (password = MD5(?) OR password = MD5(UPPER(?))) AND (account_disable IS NULL OR account_disable <> "Y")',
           [cleanUsername, cleanUsername.toUpperCase(), password, password]
         );
 
@@ -615,7 +632,7 @@ async function startServer() {
           i.an,
           i.regdate,
           i.dchdate,
-          CONVERT(CAST(d.name AS BINARY) USING tis620) as doctor_name
+          d.name as doctor_name
         FROM ipt i
         LEFT JOIN doctor d ON i.dch_doctor = d.code
         WHERE i.an = ?
@@ -869,7 +886,7 @@ async function startServer() {
     try {
       if (hosPool) {
         const query = `
-          SELECT o.hn, o.vstdate, CONVERT(CAST(d.name AS BINARY) USING tis620) as doctor_name 
+          SELECT o.hn, o.vstdate, d.name as doctor_name 
           FROM ovst o
           JOIN doctor d ON o.doctor = d.code
           LEFT JOIN opduser ou ON d.name = ou.name
