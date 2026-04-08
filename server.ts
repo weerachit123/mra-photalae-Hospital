@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import mysql from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
+import iconv from 'iconv-lite';
 
 // --- Database Configurations ---
 const CONFIG_FILE = path.join(process.cwd(), 'db_config.json');
@@ -70,11 +71,31 @@ async function initHosPool(config: any = hosDbConfig) {
   }
   try {
     if (hosPool) await hosPool.end();
+    
+    // We connect as latin1 to get raw bytes if it's a Thai database
+    // This prevents MySQL from trying (and failing) to convert encodings internally
+    const charset = config.charset || 'tis620';
+    
     hosPool = mysql.createPool({
       ...config,
-      charset: config.charset || 'tis620'
+      charset: 'latin1', // Use latin1 to get raw bytes
+      typeCast: function (field, next) {
+        if (field.type === 'VAR_STRING' || field.type === 'STRING' || field.type === 'BLOB' || field.type === 'TEXT') {
+          const buf = field.buffer();
+          if (buf) {
+            return iconv.decode(buf, charset);
+          }
+          return null;
+        }
+        return next();
+      }
     });
-    console.log('HOS MySQL pool initialized');
+    
+    // Test connection
+    const conn = await hosPool.getConnection();
+    conn.release();
+    
+    console.log(`HOS MySQL pool initialized with manual conversion for: ${charset}`);
     return true;
   } catch (e) {
     console.error('Failed to initialize HOS MySQL pool:', e);
@@ -95,7 +116,13 @@ async function initMraPool(config: any = mraDbConfig) {
       ...config,
       charset: 'utf8mb4'
     });
-    console.log('MRA MySQL pool initialized');
+    
+    // Test and set session charset
+    const conn = await mraPool.getConnection();
+    await conn.query('SET NAMES utf8mb4');
+    conn.release();
+    
+    console.log('MRA MySQL pool initialized with charset: utf8mb4');
     return true;
   } catch (e) {
     console.error('Failed to initialize MRA MySQL pool:', e);
@@ -148,14 +175,11 @@ async function startServer() {
         password: config.password,
         database: config.database || 'hos',
         port: parseInt(config.port || '3306'),
+        charset: config.charset || 'tis620',
         connectTimeout: 10000
       });
       
       if (success) {
-        // Test connection
-        const connection = await hosPool!.getConnection();
-        connection.release();
-        
         // Save config
         const savedConfig = await getDbConfig();
         savedConfig.hos = {
@@ -164,6 +188,7 @@ async function startServer() {
           password: config.password,
           database: config.database || 'hos',
           port: parseInt(config.port || '3306'),
+          charset: config.charset || 'tis620',
           connectTimeout: 10000
         };
         await saveDbConfig(savedConfig);
@@ -796,6 +821,48 @@ async function startServer() {
     try {
       await mraPool.execute('DELETE FROM users WHERE loginname = ?', [loginname]);
       res.json({ success: true, message: 'ลบผู้ใช้งานเรียบร้อยแล้ว' });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // Repair Thai Encoding in MRA Database
+  app.post('/api/repair-thai', async (req, res) => {
+    if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
+    
+    try {
+      const connection = await mraPool.getConnection();
+      try {
+        // 1. Reset Departments to defaults (safest way to fix them)
+        await connection.query('DELETE FROM departments');
+        const defaultDepts = [
+          { code: '001', name: 'อายุรกรรม', type: 'OPD', limit: 10 },
+          { code: '002', name: 'ศัลยกรรม', type: 'OPD', limit: 10 },
+          { code: '003', name: 'สูติ-นรีเวชกรรม', type: 'OPD', limit: 10 },
+          { code: '004', name: 'กุมารเวชกรรม', type: 'OPD', limit: 10 },
+          { code: '005', name: 'ศัลยกรรมกระดูก', type: 'OPD', limit: 10 },
+          { code: '011', name: 'จักษุ', type: 'OPD', limit: 10 },
+          { code: '042', name: 'ทันตกรรม', type: 'OPD', limit: 10 },
+          { code: '012', name: 'โสต ศอ นาสิก', type: 'OPD', limit: 10 },
+          { code: '016', name: 'เวชกรรมฟื้นฟู', type: 'OPD', limit: 10 },
+          { code: '017', name: 'แพทย์แผนไทย', type: 'OPD', limit: 10 },
+          { code: '01', name: 'ตึกผู้ป่วยในชาย', type: 'IPD', limit: 10 },
+          { code: '02', name: 'ตึกผู้ป่วยในหญิง', type: 'IPD', limit: 10 },
+          { code: '03', name: 'ตึกสูติ-นรีเวช', type: 'IPD', limit: 10 },
+          { code: '04', name: 'ตึกกุมารเวช', type: 'IPD', limit: 10 },
+          { code: '05', name: 'ICU', type: 'IPD', limit: 10 },
+        ];
+        for (const d of defaultDepts) {
+          await connection.query(
+            'INSERT INTO departments (code, name, type, default_limit) VALUES (?, ?, ?, ?)',
+            [d.code, d.name, d.type, d.limit]
+          );
+        }
+
+        res.json({ success: true, message: 'ซ่อมแซมรายชื่อแผนกเรียบร้อยแล้ว กรุณารีเฟรชหน้าจอ' });
+      } finally {
+        connection.release();
+      }
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });
     }

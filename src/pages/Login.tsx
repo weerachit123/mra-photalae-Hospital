@@ -15,7 +15,8 @@ export default function Login() {
     password: '',
     database: 'mra_audit',
     hosDatabase: 'hos',
-    port: '3306'
+    port: '3306',
+    charset: 'tis620'
   });
 
   const navigate = useNavigate();
@@ -55,7 +56,8 @@ export default function Login() {
             user: dbConfig.user,
             password: dbConfig.password,
             database: dbConfig.hosDatabase,
-            port: dbConfig.port
+            port: dbConfig.port,
+            charset: dbConfig.charset
           } 
         }),
       });
@@ -324,6 +326,22 @@ export default function Login() {
                     onChange={(e) => setDbConfig({...dbConfig, hosDatabase: e.target.value})}
                   />
                 </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">HosXP Charset (Encoding)</label>
+                  <select
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium text-sm"
+                    value={dbConfig.charset}
+                    onChange={(e) => setDbConfig({...dbConfig, charset: e.target.value})}
+                  >
+                    <option value="tis620">TIS-620 (มาตรฐาน HosXP)</option>
+                    <option value="utf8mb4">UTF-8 (สำหรับฐานข้อมูลรุ่นใหม่)</option>
+                    <option value="latin1">Latin1 (บางกรณี)</option>
+                  </select>
+                  <p className="text-[10px] text-blue-500 ml-1">
+                    * หากภาษาไทยอ่านไม่รู้เรื่อง ให้ลองเปลี่ยนเป็น UTF-8
+                  </p>
+                </div>
               </div>
               
               <p className="text-[10px] text-slate-400 italic">
@@ -348,6 +366,23 @@ export default function Login() {
                 >
                   <Database className="w-3 h-3" />
                   {isSettingUp ? 'กำลังสร้าง...' : 'คลิกเพื่อสร้าง Database ใหม่'}
+                </button>
+                <button
+                  onClick={async () => {
+                    if (window.confirm('คุณต้องการซ่อมแซมภาษาไทยในรายชื่อแผนกใช่หรือไม่?')) {
+                      try {
+                        const res = await fetch('/api/repair-thai', { method: 'POST' });
+                        const data = await res.json();
+                        alert(data.message);
+                      } catch (e) {
+                        alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+                      }
+                    }
+                  }}
+                  className="flex items-center gap-1.5 text-[10px] font-bold text-orange-600 hover:text-orange-700 transition-colors"
+                >
+                  <Activity className="w-3 h-3" />
+                  ซ่อมแซมภาษาไทย (เธเธเธเธเธ)
                 </button>
               </div>
               <div className="flex gap-3">
