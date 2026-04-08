@@ -367,23 +367,6 @@ export default function Login() {
                   <Database className="w-3 h-3" />
                   {isSettingUp ? 'กำลังสร้าง...' : 'คลิกเพื่อสร้าง Database ใหม่'}
                 </button>
-                <button
-                  onClick={async () => {
-                    if (window.confirm('คุณต้องการซ่อมแซมภาษาไทยในรายชื่อแผนกใช่หรือไม่?')) {
-                      try {
-                        const res = await fetch('/api/repair-thai', { method: 'POST' });
-                        const data = await res.json();
-                        alert(data.message);
-                      } catch (e) {
-                        alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
-                      }
-                    }
-                  }}
-                  className="flex items-center gap-1.5 text-[10px] font-bold text-orange-600 hover:text-orange-700 transition-colors"
-                >
-                  <Activity className="w-3 h-3" />
-                  ซ่อมแซมภาษาไทย (เธเธเธเธเธ)
-                </button>
               </div>
               <div className="flex gap-3">
                 <button 

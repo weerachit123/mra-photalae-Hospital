@@ -4,7 +4,6 @@ import path from 'path';
 import fs from 'fs/promises';
 import mysql from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
-import iconv from 'iconv-lite';
 
 // --- Database Configurations ---
 const CONFIG_FILE = path.join(process.cwd(), 'db_config.json');
@@ -71,31 +70,17 @@ async function initHosPool(config: any = hosDbConfig) {
   }
   try {
     if (hosPool) await hosPool.end();
-    
-    // We connect as latin1 to get raw bytes if it's a Thai database
-    // This prevents MySQL from trying (and failing) to convert encodings internally
     const charset = config.charset || 'tis620';
-    
     hosPool = mysql.createPool({
       ...config,
-      charset: 'latin1', // Use latin1 to get raw bytes
-      typeCast: function (field, next) {
-        if (field.type === 'VAR_STRING' || field.type === 'STRING' || field.type === 'BLOB' || field.type === 'TEXT') {
-          const buf = field.buffer();
-          if (buf) {
-            return iconv.decode(buf, charset);
-          }
-          return null;
-        }
-        return next();
-      }
+      charset: charset
     });
     
     // Test connection
     const conn = await hosPool.getConnection();
     conn.release();
     
-    console.log(`HOS MySQL pool initialized with manual conversion for: ${charset}`);
+    console.log(`HOS MySQL pool initialized with charset: ${charset}`);
     return true;
   } catch (e) {
     console.error('Failed to initialize HOS MySQL pool:', e);
@@ -486,7 +471,7 @@ async function startServer() {
       if (hosPool) {
         // 2. Check Authentication in HosXP
         const [hosRows] = await hosPool.execute<mysql.RowDataPacket[]>(
-          'SELECT loginname, name, department FROM opduser WHERE (loginname = ? OR loginname = ?) AND (password = MD5(?) OR password = MD5(UPPER(?))) AND (account_disable IS NULL OR account_disable <> "Y")',
+          'SELECT loginname, CONVERT(CAST(name AS BINARY) USING tis620) as name, CONVERT(CAST(department AS BINARY) USING tis620) as department FROM opduser WHERE (loginname = ? OR loginname = ?) AND (password = MD5(?) OR password = MD5(UPPER(?))) AND (account_disable IS NULL OR account_disable <> "Y")',
           [cleanUsername, cleanUsername.toUpperCase(), password, password]
         );
 
@@ -590,7 +575,7 @@ async function startServer() {
         SELECT 
           v.hn,
           v.vstdate,
-          d.name as doctor_name
+          CONVERT(CAST(d.name AS BINARY) USING tis620) as doctor_name
         FROM vn_stat v
         LEFT JOIN doctor d ON v.dx_doctor = d.code
         WHERE v.vn = ?
@@ -630,7 +615,7 @@ async function startServer() {
           i.an,
           i.regdate,
           i.dchdate,
-          d.name as doctor_name
+          CONVERT(CAST(d.name AS BINARY) USING tis620) as doctor_name
         FROM ipt i
         LEFT JOIN doctor d ON i.dch_doctor = d.code
         WHERE i.an = ?
@@ -826,48 +811,6 @@ async function startServer() {
     }
   });
 
-  // Repair Thai Encoding in MRA Database
-  app.post('/api/repair-thai', async (req, res) => {
-    if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
-    
-    try {
-      const connection = await mraPool.getConnection();
-      try {
-        // 1. Reset Departments to defaults (safest way to fix them)
-        await connection.query('DELETE FROM departments');
-        const defaultDepts = [
-          { code: '001', name: 'อายุรกรรม', type: 'OPD', limit: 10 },
-          { code: '002', name: 'ศัลยกรรม', type: 'OPD', limit: 10 },
-          { code: '003', name: 'สูติ-นรีเวชกรรม', type: 'OPD', limit: 10 },
-          { code: '004', name: 'กุมารเวชกรรม', type: 'OPD', limit: 10 },
-          { code: '005', name: 'ศัลยกรรมกระดูก', type: 'OPD', limit: 10 },
-          { code: '011', name: 'จักษุ', type: 'OPD', limit: 10 },
-          { code: '042', name: 'ทันตกรรม', type: 'OPD', limit: 10 },
-          { code: '012', name: 'โสต ศอ นาสิก', type: 'OPD', limit: 10 },
-          { code: '016', name: 'เวชกรรมฟื้นฟู', type: 'OPD', limit: 10 },
-          { code: '017', name: 'แพทย์แผนไทย', type: 'OPD', limit: 10 },
-          { code: '01', name: 'ตึกผู้ป่วยในชาย', type: 'IPD', limit: 10 },
-          { code: '02', name: 'ตึกผู้ป่วยในหญิง', type: 'IPD', limit: 10 },
-          { code: '03', name: 'ตึกสูติ-นรีเวช', type: 'IPD', limit: 10 },
-          { code: '04', name: 'ตึกกุมารเวช', type: 'IPD', limit: 10 },
-          { code: '05', name: 'ICU', type: 'IPD', limit: 10 },
-        ];
-        for (const d of defaultDepts) {
-          await connection.query(
-            'INSERT INTO departments (code, name, type, default_limit) VALUES (?, ?, ?, ?)',
-            [d.code, d.name, d.type, d.limit]
-          );
-        }
-
-        res.json({ success: true, message: 'ซ่อมแซมรายชื่อแผนกเรียบร้อยแล้ว กรุณารีเฟรชหน้าจอ' });
-      } finally {
-        connection.release();
-      }
-    } catch (error: any) {
-      res.status(500).json({ success: false, message: error.message });
-    }
-  });
-
   // Get user worksheet access
   app.get('/api/users/:loginname/access', async (req, res) => {
     if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
@@ -926,9 +869,10 @@ async function startServer() {
     try {
       if (hosPool) {
         const query = `
-          SELECT o.hn, o.vstdate, d.name as doctor_name 
+          SELECT o.hn, o.vstdate, CONVERT(CAST(d.name AS BINARY) USING tis620) as doctor_name 
           FROM ovst o
           JOIN doctor d ON o.doctor = d.code
+          LEFT JOIN opduser ou ON d.name = ou.name
           JOIN opdscreen oo ON o.vn = oo.vn
           JOIN vn_stat v ON o.vn = v.vn
           WHERE o.vstdate BETWEEN ? AND ?
@@ -936,6 +880,15 @@ async function startServer() {
             AND (oo.cc NOT LIKE '%ญาติ%' AND oo.cc NOT LIKE '%ขอใบ%')
             AND d.position_id = '1'
             AND v.pdx NOT IN ('Z000', 'Z017')
+            AND (
+              (o.main_dep NOT IN ('005', '042', '041'))
+              OR
+              (o.main_dep = '005' AND ou.groupname = 'ทันตแพทย์')
+              OR
+              (o.main_dep = '042' AND ou.groupname = 'นักกายภาพ')
+              OR
+              (o.main_dep = '041' AND ou.groupname = 'จนท.แพทย์แผนไทย')
+            )
           ORDER BY RAND() 
           LIMIT ?
         `;
