@@ -29,7 +29,8 @@ const hosDbConfig = {
   password: process.env.HOS_DB_PASSWORD || '',
   database: process.env.HOS_DB_NAME || 'hos',
   port: parseInt(process.env.HOS_DB_PORT || '3306'),
-  connectTimeout: 3000
+  connectTimeout: 3000,
+  charset: 'utf8mb4'
 };
 
 // MRA Database (Audit)
@@ -40,7 +41,8 @@ const mraDbConfig = {
   password: process.env.MRA_DB_PASSWORD || '',
   database: process.env.MRA_DB_NAME || 'mra_audit',
   port: parseInt(process.env.MRA_DB_PORT || '3306'),
-  connectTimeout: 3000
+  connectTimeout: 3000,
+  charset: 'utf8mb4'
 };
 
 // Initialize Pools from persisted config or env
@@ -61,14 +63,17 @@ async function initAllPools() {
 }
 
 // Initialize HOS Pool
-async function initHosPool(config = hosDbConfig) {
+async function initHosPool(config: any = hosDbConfig) {
   if (!config.host) {
     hosPool = null;
     return false;
   }
   try {
     if (hosPool) await hosPool.end();
-    hosPool = mysql.createPool(config);
+    hosPool = mysql.createPool({
+      ...config,
+      charset: config.charset || 'utf8mb4'
+    });
     console.log('HOS MySQL pool initialized');
     return true;
   } catch (e) {
@@ -79,14 +84,17 @@ async function initHosPool(config = hosDbConfig) {
 }
 
 // Initialize MRA Pool
-async function initMraPool(config = mraDbConfig) {
+async function initMraPool(config: any = mraDbConfig) {
   if (!config.host) {
     mraPool = null;
     return false;
   }
   try {
     if (mraPool) await mraPool.end();
-    mraPool = mysql.createPool(config);
+    mraPool = mysql.createPool({
+      ...config,
+      charset: config.charset || 'utf8mb4'
+    });
     console.log('MRA MySQL pool initialized');
     return true;
   } catch (e) {
@@ -473,8 +481,17 @@ async function startServer() {
   app.get('/api/users', async (req, res) => {
     if (!mraPool) return res.status(500).json({ success: false, message: 'MRA Database not connected' });
     try {
-      const [rows] = await mraPool.execute('SELECT * FROM users ORDER BY created_at DESC');
-      res.json({ success: true, users: rows });
+      const [users] = await mraPool.execute<mysql.RowDataPacket[]>('SELECT * FROM users ORDER BY created_at DESC');
+      const [access] = await mraPool.execute<mysql.RowDataPacket[]>('SELECT * FROM user_department_access');
+      
+      const usersWithAccess = users.map(user => ({
+        ...user,
+        mapped_departments: access
+          .filter(a => a.loginname === user.loginname)
+          .map(a => a.department_name)
+      }));
+
+      res.json({ success: true, users: usersWithAccess });
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });
     }

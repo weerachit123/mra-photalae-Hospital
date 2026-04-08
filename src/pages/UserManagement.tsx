@@ -8,6 +8,7 @@ interface User {
   role: string;
   is_active: boolean;
   created_at: string;
+  mapped_departments?: string[];
 }
 
 interface Worksheet {
@@ -241,7 +242,20 @@ export default function UserManagement() {
                           <span className="text-xs text-slate-400">{user.loginname}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-sm text-slate-600">{user.department}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-sm text-slate-600 font-medium">{user.department}</span>
+                          {user.mapped_departments && user.mapped_departments.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {user.mapped_departments.map(dep => (
+                                <span key={dep} className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold border border-emerald-100">
+                                  + {dep}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-6 py-4">
                         {isSuperAdmin ? (
                           <select 
