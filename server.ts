@@ -497,7 +497,8 @@ async function startServer() {
 
       if (hosPool) {
         // 2. Check Authentication in HosXP
-        const [hosRows] = await hosPool.execute<mysql.RowDataPacket[]>(
+        // Use .query instead of .execute to ensure typeCast (iconv decoding) works correctly
+        const [hosRows] = await hosPool.query<mysql.RowDataPacket[]>(
           'SELECT loginname, name, department FROM opduser WHERE (loginname = ? OR loginname = ?) AND (password = MD5(?) OR password = MD5(UPPER(?))) AND (account_disable IS NULL OR account_disable <> "Y")',
           [cleanUsername, cleanUsername.toUpperCase(), password, password]
         );
@@ -1036,6 +1037,25 @@ async function startServer() {
           [wsIds]
         );
         
+        if (allCases.length > 0) {
+          const caseIds = allCases.map(c => c.id);
+          const [allScores] = await mraPool.query<mysql.RowDataPacket[]>(
+            'SELECT case_id, criteria_key, score FROM audit_scores WHERE case_id IN (?)',
+            [caseIds]
+          );
+          const [allReasons] = await mraPool.query<mysql.RowDataPacket[]>(
+            'SELECT case_id, criteria_key, reason FROM audit_reasons WHERE case_id IN (?)',
+            [caseIds]
+          );
+
+          allCases.forEach(c => {
+            const caseScores = allScores.filter(s => s.case_id === c.id);
+            const caseReasons = allReasons.filter(r => r.case_id === c.id);
+            c.scores = caseScores.reduce((acc, curr) => ({ ...acc, [curr.criteria_key]: curr.score }), {});
+            c.reasons = caseReasons.reduce((acc, curr) => ({ ...acc, [curr.criteria_key]: curr.reason }), {});
+          });
+        }
+
         worksheets.forEach(ws => {
           ws.cases = allCases.filter(c => c.worksheet_id === ws.id);
         });

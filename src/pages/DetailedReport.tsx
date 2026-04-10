@@ -67,8 +67,12 @@ export default function DetailedReport() {
 
   useEffect(() => {
     const fetchWorksheets = async () => {
+      const userJson = localStorage.getItem('user');
+      const u = userJson ? JSON.parse(userJson) : null;
+      const query = u ? `?loginname=${u.loginname}&role=${u.role}` : '';
+
       try {
-        const response = await fetch('/api/mra/worksheets');
+        const response = await fetch(`/api/mra/worksheets${query}`);
         const data = await response.json();
         if (data.success) {
           setWorksheets(data.data);
@@ -409,6 +413,30 @@ export default function DetailedReport() {
                       </tr>
                     );
                   })}
+                  {/* Grand Total Row */}
+                  <tr className="bg-slate-50 border-t-2 border-slate-200">
+                    <td className="py-3 font-black text-slate-800">รวมทั้งหมด (Grand Total)</td>
+                    {Array.from({ length: maxCols }).map((_, i) => {
+                      let colSum = 0;
+                      rows.forEach(r => {
+                        if (counts[r.id][i] !== undefined) colSum += counts[r.id][i];
+                      });
+                      return <td key={i} className="py-3 text-center font-black text-slate-800">{colSum}</td>;
+                    })}
+                    <td className="py-3 text-right font-black text-slate-800">
+                      {rows.reduce((sum, r) => sum + totals[r.id].reduce((a: number, b: number) => a + b, 0), 0)}
+                    </td>
+                    <td className="py-3 text-right font-black text-slate-800">
+                      {rows.reduce((sum, r) => sum + counts[r.id].reduce((a: number, b: number) => a + b, 0) + bonusCounts[r.id] - deductCounts[r.id], 0)}
+                    </td>
+                    <td className="py-3 text-right font-black text-blue-700">
+                      {(() => {
+                        const grandTotal = rows.reduce((sum, r) => sum + totals[r.id].reduce((a: number, b: number) => a + b, 0), 0);
+                        const grandEarned = rows.reduce((sum, r) => sum + counts[r.id].reduce((a: number, b: number) => a + b, 0) + bonusCounts[r.id] - deductCounts[r.id], 0);
+                        return grandTotal > 0 ? ((grandEarned / grandTotal) * 100).toFixed(1) : '0.0';
+                      })()}%
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -452,6 +480,33 @@ export default function DetailedReport() {
                       </tr>
                     );
                   })}
+                  {/* Grand Total Row */}
+                  <tr className="bg-slate-50 border-t-2 border-slate-200">
+                    <td className="py-3 font-black text-slate-800">รวมทั้งหมด (Grand Total)</td>
+                    {Array.from({ length: maxCols }).map((_, i) => {
+                      let colSum = 0;
+                      let totalSum = 0;
+                      rows.forEach(r => {
+                        if (counts[r.id][i] !== undefined) colSum += counts[r.id][i];
+                        if (totals[r.id][i] !== undefined) totalSum += totals[r.id][i];
+                      });
+                      const p = totalSum > 0 ? (colSum / totalSum) * 100 : 0;
+                      return (
+                        <td key={i} className="py-3 text-center">
+                          <span className={`font-black ${p >= 80 ? 'text-emerald-700' : p >= 50 ? 'text-amber-700' : 'text-red-700'}`}>
+                            {totalSum > 0 ? p.toFixed(1) : '-'}
+                          </span>
+                        </td>
+                      );
+                    })}
+                    <td className="py-3 text-right font-black text-emerald-800">
+                      {(() => {
+                        const grandTotal = rows.reduce((sum, r) => sum + totals[r.id].reduce((a: number, b: number) => a + b, 0), 0);
+                        const grandEarned = rows.reduce((sum, r) => sum + counts[r.id].reduce((a: number, b: number) => a + b, 0) + bonusCounts[r.id] - deductCounts[r.id], 0);
+                        return grandTotal > 0 ? ((grandEarned / grandTotal) * 100).toFixed(1) : '0.0';
+                      })()}%
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>

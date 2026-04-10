@@ -43,8 +43,12 @@ export default function WorksheetDetail() {
     }
 
     const fetchWorksheet = async () => {
+      const userJson = localStorage.getItem('user');
+      if (!userJson) return;
+      const u = JSON.parse(userJson);
+
       try {
-        const response = await fetch(`/api/mra/worksheets/${id}?loginname=${user?.loginname}&role=${user?.role}`);
+        const response = await fetch(`/api/mra/worksheets/${id}?loginname=${u.loginname}&role=${u.role}`);
         const data = await response.json();
         if (data.success) {
           setWorksheet(data.data);

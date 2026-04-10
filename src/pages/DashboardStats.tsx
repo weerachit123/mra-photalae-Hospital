@@ -70,8 +70,12 @@ export default function DashboardStats() {
 
   useEffect(() => {
     const fetchWorksheets = async () => {
+      const userJson = localStorage.getItem('user');
+      const u = userJson ? JSON.parse(userJson) : null;
+      const query = u ? `?loginname=${u.loginname}&role=${u.role}` : '';
+
       try {
-        const response = await fetch('/api/mra/worksheets');
+        const response = await fetch(`/api/mra/worksheets${query}`);
         const data = await response.json();
         if (data.success) {
           setWorksheets(data.data);
