@@ -203,6 +203,9 @@ export default function AuditOPD() {
       name: selectedWorksheet,
       type: 'OPD',
       department: depName,
+      depCode: selectedDep,
+      startDate,
+      endDate,
       criteria_year: criteriaYear,
       createdAt: new Date().toISOString(),
       cases: cases.map(c => ({ ...c, status: 'pending' }))

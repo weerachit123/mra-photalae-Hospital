@@ -144,7 +144,7 @@ const MRA_JSON_FILE = path.join(process.cwd(), 'mra_data.json');
 
 async function getJsonData() {
   try {
-    const data = await fs.readFile(MRA_JSON_FILE, 'utf-8');
+    const data = await fsPromises.readFile(MRA_JSON_FILE, 'utf-8');
     return JSON.parse(data);
   } catch (e) {
     return { worksheets: [] };
@@ -152,7 +152,7 @@ async function getJsonData() {
 }
 
 async function saveJsonData(data: any) {
-  await fs.writeFile(MRA_JSON_FILE, JSON.stringify(data, null, 2));
+  await fsPromises.writeFile(MRA_JSON_FILE, JSON.stringify(data, null, 2));
 }
 
 async function startServer() {
@@ -297,17 +297,31 @@ async function startServer() {
             name VARCHAR(255) NOT NULL,
             type ENUM('OPD', 'IPD') NOT NULL,
             department VARCHAR(255) NOT NULL,
+            depCode VARCHAR(50),
+            wardCode VARCHAR(50),
+            startDate DATE,
+            endDate DATE,
             criteria_year VARCHAR(4) DEFAULT '2557',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           )
         `);
         
-        // Add criteria_year column if it doesn't exist
-        try {
-          await connection.query(`ALTER TABLE worksheets ADD COLUMN criteria_year VARCHAR(4) DEFAULT '2557'`);
-        } catch (e: any) {
-          if (e.code !== 'ER_DUP_FIELDNAME') {
-            console.error('Error adding criteria_year column:', e);
+        // Add new columns if they don't exist
+        const columnsToAdd = [
+          { name: 'criteria_year', type: "VARCHAR(4) DEFAULT '2557'" },
+          { name: 'depCode', type: 'VARCHAR(50)' },
+          { name: 'wardCode', type: 'VARCHAR(50)' },
+          { name: 'startDate', type: 'DATE' },
+          { name: 'endDate', type: 'DATE' }
+        ];
+
+        for (const col of columnsToAdd) {
+          try {
+            await connection.query(`ALTER TABLE worksheets ADD COLUMN ${col.name} ${col.type}`);
+          } catch (e: any) {
+            if (e.code !== 'ER_DUP_FIELDNAME') {
+              console.error(`Error adding ${col.name} column:`, e);
+            }
           }
         }
 
@@ -1165,7 +1179,7 @@ async function startServer() {
       return await saveToJson();
     }
     
-    const { id, name, type, department, criteria_year, cases } = req.body;
+    const { id, name, type, department, depCode, wardCode, startDate, endDate, criteria_year, cases } = req.body;
     
     try {
       const connection = await mraPool.getConnection();
@@ -1173,8 +1187,8 @@ async function startServer() {
       
       try {
         await connection.query(
-          'INSERT INTO worksheets (id, name, type, department, criteria_year) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=?, type=?, department=?, criteria_year=?',
-          [id, name, type, department, criteria_year || '2557', name, type, department, criteria_year || '2557']
+          'INSERT INTO worksheets (id, name, type, department, depCode, wardCode, startDate, endDate, criteria_year) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=?, type=?, department=?, depCode=?, wardCode=?, startDate=?, endDate=?, criteria_year=?',
+          [id, name, type, department, depCode || null, wardCode || null, startDate || null, endDate || null, criteria_year || '2557', name, type, department, depCode || null, wardCode || null, startDate || null, endDate || null, criteria_year || '2557']
         );
         
         await connection.query('DELETE FROM audit_cases WHERE worksheet_id = ?', [id]);

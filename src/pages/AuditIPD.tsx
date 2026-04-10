@@ -186,6 +186,9 @@ export default function AuditIPD() {
       name: selectedWorksheet,
       type: 'IPD',
       department: wardName,
+      wardCode: selectedWard,
+      startDate,
+      endDate,
       criteria_year: criteriaYear,
       createdAt: new Date().toISOString(),
       cases: cases.map(c => ({ ...c, status: 'pending' }))

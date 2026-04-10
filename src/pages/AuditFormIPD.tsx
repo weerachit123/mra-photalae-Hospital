@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { getIPDCriteria } from './EditCriteria';
 import { Save, ArrowLeft, Info, Check, X, Minus, MessageSquare, Plus } from 'lucide-react';
+import dayjs from 'dayjs';
 
 // --- Reason Modal Component ---
 interface ReasonModalProps {
@@ -353,7 +354,7 @@ export default function AuditFormIPD() {
             <div>
               <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">วันที่ Admit / Discharge</label>
               <div className="text-[10px] font-bold text-slate-700 truncate">
-                {caseData.regdate} - {caseData.dchdate}
+                {dayjs(caseData.regdate).format('DD/MM/YYYY')} - {dayjs(caseData.dchdate).format('DD/MM/YYYY')}
               </div>
             </div>
             <div>

@@ -8,6 +8,10 @@ interface Worksheet {
   name: string;
   type: 'OPD' | 'IPD';
   department: string;
+  depCode?: string;
+  wardCode?: string;
+  startDate?: string;
+  endDate?: string;
   createdAt: string;
   cases: any[];
 }
@@ -140,9 +144,12 @@ export default function WorksheetDetail() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           limit: 1, 
-          depCode: worksheet.department,
-          wardCode: worksheet.department,
-          excludeHns: worksheet.cases.map(c => c.hn)
+          startDate: worksheet.startDate,
+          endDate: worksheet.endDate,
+          depCode: worksheet.depCode,
+          wardCode: worksheet.wardCode,
+          excludeHns: worksheet.cases.map(c => c.hn),
+          excludeAns: worksheet.cases.map(c => c.an).filter(Boolean)
         }),
       });
 
@@ -151,16 +158,6 @@ export default function WorksheetDetail() {
       if (data.success && data.data.length > 0) {
         const updatedWorksheet = { ...worksheet };
         updatedWorksheet.cases[index] = { ...data.data[0], status: 'pending' };
-        
-        // Update on server
-        const saveResponse = await fetch(`/api/mra/worksheets/${id}`, {
-          method: 'POST', // Or PUT if I had one, but my POST handles update if ID exists in some logic? 
-          // Actually my server.ts POST /api/mra/worksheets creates a new one.
-          // I should probably add a PUT or update the existing one.
-          // Let's check server.ts again.
-        });
-        // Wait, I didn't implement a partial update for cases in server.ts yet.
-        // I should probably update the whole worksheet.
         
         const updateResponse = await fetch(`/api/mra/worksheets`, {
           method: 'POST',
@@ -171,7 +168,11 @@ export default function WorksheetDetail() {
 
         if (updateData.success) {
           setWorksheet(updatedWorksheet);
+        } else {
+          alert('ไม่สามารถอัปเดตใบงานได้');
         }
+      } else {
+        alert('ไม่พบเคสใหม่ที่ตรงตามเงื่อนไข');
       }
     } catch (err) {
       console.error('Failed to refresh case', err);
