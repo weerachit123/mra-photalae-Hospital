@@ -32,8 +32,8 @@ export default function AuditIPD() {
     );
   }
 
-  const [startDate, setStartDate] = useState('2024-10-01');
-  const [endDate, setEndDate] = useState('2024-12-31');
+  const [startDate, setStartDate] = useState('2026-01-01');
+  const [endDate, setEndDate] = useState('2026-03-31');
   const [selectedWard, setSelectedWard] = useState(WARDS[0].code); // Default to 01
   const [criteriaYear, setCriteriaYear] = useState('2557');
   const [limit, setLimit] = useState(WARDS[0].defaultLimit);

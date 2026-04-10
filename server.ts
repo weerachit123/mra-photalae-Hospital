@@ -7,24 +7,6 @@ import mysql from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
 import iconv from 'iconv-lite';
 
-// Helper to decode Thai characters from DB
-function decodeThai(data: any): any {
-  if (typeof data === 'string') {
-    return iconv.decode(Buffer.from(data, 'binary'), 'tis620');
-  } else if (Buffer.isBuffer(data)) {
-    return iconv.decode(data, 'tis620');
-  } else if (Array.isArray(data)) {
-    return data.map(decodeThai);
-  } else if (data !== null && typeof data === 'object') {
-    const newData: any = {};
-    for (const key in data) {
-      newData[key] = decodeThai(data[key]);
-    }
-    return newData;
-  }
-  return data;
-}
-
 // --- Database Configurations ---
 const CONFIG_FILE = path.join(process.cwd(), 'db_config.json');
 
@@ -49,7 +31,7 @@ const hosDbConfig = {
   password: process.env.HOS_DB_PASSWORD || '',
   database: process.env.HOS_DB_NAME || 'hos',
   port: parseInt(process.env.HOS_DB_PORT || '3306'),
-  connectTimeout: 3000,
+  connectTimeout: 10000,
   charset: 'tis620'
 };
 
@@ -61,7 +43,7 @@ const mraDbConfig = {
   password: process.env.MRA_DB_PASSWORD || '',
   database: process.env.MRA_DB_NAME || 'mra_audit',
   port: parseInt(process.env.MRA_DB_PORT || '3306'),
-  connectTimeout: 3000,
+  connectTimeout: 10000,
   charset: 'utf8mb4'
 };
 
@@ -113,8 +95,12 @@ async function initHosPool(config: any = hosDbConfig) {
     
     console.log(`HOS MySQL pool initialized with charset: ${charset}`);
     return true;
-  } catch (e) {
-    console.error('Failed to initialize HOS MySQL pool:', e);
+  } catch (e: any) {
+    if (e.code === 'ETIMEDOUT') {
+      console.error('Failed to initialize HOS MySQL pool: Connection Timeout. Please check if the IP 192.168.0.5 is reachable from this cloud environment.');
+    } else {
+      console.error('Failed to initialize HOS MySQL pool:', e);
+    }
     hosPool = null;
     return false;
   }
@@ -140,8 +126,12 @@ async function initMraPool(config: any = mraDbConfig) {
     
     console.log('MRA MySQL pool initialized with charset: utf8mb4');
     return true;
-  } catch (e) {
-    console.error('Failed to initialize MRA MySQL pool:', e);
+  } catch (e: any) {
+    if (e.code === 'ETIMEDOUT') {
+      console.error('Failed to initialize MRA MySQL pool: Connection Timeout. Please check if the IP 192.168.0.5 is reachable from this cloud environment.');
+    } else {
+      console.error('Failed to initialize MRA MySQL pool:', e);
+    }
     mraPool = null;
     return false;
   }
@@ -606,7 +596,7 @@ async function startServer() {
         SELECT 
           v.hn,
           v.vstdate,
-          CONVERT(CAST(d.name AS BINARY) USING tis620) as doctor_name
+          d.name as doctor_name
         FROM vn_stat v
         LEFT JOIN doctor d ON v.dx_doctor = d.code
         WHERE v.vn = ?
@@ -899,27 +889,24 @@ async function startServer() {
     
     try {
       if (hosPool) {
+        let positionCondition = "AND d.position_id = '1'"; // Default for other departments
+        if (depCode === '005') {
+          positionCondition = "AND d.position_id = '2'";
+        } else if (depCode === '041' || depCode === '042') {
+          positionCondition = ""; // No position_id filter for these departments
+        }
+
         const query = `
           SELECT o.hn, o.vstdate, d.name as doctor_name 
           FROM ovst o
           JOIN doctor d ON o.doctor = d.code
-          LEFT JOIN opduser ou ON d.name = ou.name
           JOIN opdscreen oo ON o.vn = oo.vn
           JOIN vn_stat v ON o.vn = v.vn
           WHERE o.vstdate BETWEEN ? AND ?
-            AND o.main_dep IN (?)
+            AND o.main_dep = ?
             AND (oo.cc NOT LIKE '%ญาติ%' AND oo.cc NOT LIKE '%ขอใบ%')
-            AND d.position_id = '1'
             AND v.pdx NOT IN ('Z000', 'Z017')
-            AND (
-              (o.main_dep NOT IN ('005', '042', '041'))
-              OR
-              (o.main_dep = '005' AND ou.groupname = 'ทันตแพทย์')
-              OR
-              (o.main_dep = '042' AND ou.groupname = 'นักกายภาพ')
-              OR
-              (o.main_dep = '041' AND ou.groupname = 'จนท.แพทย์แผนไทย')
-            )
+            ${positionCondition}
           ORDER BY RAND() 
           LIMIT ?
         `;

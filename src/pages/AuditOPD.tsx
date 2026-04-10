@@ -33,8 +33,8 @@ export default function AuditOPD() {
     );
   }
 
-  const [startDate, setStartDate] = useState('2023-07-01');
-  const [endDate, setEndDate] = useState('2023-09-30');
+  const [startDate, setStartDate] = useState('2026-01-01');
+  const [endDate, setEndDate] = useState('2026-03-31');
   const [selectedDep, setSelectedDep] = useState(DEPARTMENTS[6].code); // Default to 042
   const [criteriaYear, setCriteriaYear] = useState('2557');
   const [limit, setLimit] = useState(DEPARTMENTS[6].defaultLimit);
@@ -125,6 +125,7 @@ export default function AuditOPD() {
 
       if (data.success) {
         setCases(data.data);
+        setIsMock(data.mock || false);
         if (data.data.length === 0) {
           setError('ไม่พบข้อมูลเคสตามเงื่อนไขที่กำหนด กรุณาลองเปลี่ยนวันที่หรือแผนก');
         }
