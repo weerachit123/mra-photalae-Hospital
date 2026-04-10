@@ -144,10 +144,10 @@ export default function WorksheetDetail() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           limit: 1, 
-          startDate: worksheet.startDate,
-          endDate: worksheet.endDate,
-          depCode: worksheet.depCode,
-          wardCode: worksheet.wardCode,
+          startDate: worksheet.startDate || '2026-01-01',
+          endDate: worksheet.endDate || '2026-03-31',
+          depCode: worksheet.depCode || (isOPD ? '042' : undefined),
+          wardCode: worksheet.wardCode || (!isOPD ? '01' : undefined),
           excludeHns: worksheet.cases.map(c => c.hn),
           excludeAns: worksheet.cases.map(c => c.an).filter(Boolean)
         }),

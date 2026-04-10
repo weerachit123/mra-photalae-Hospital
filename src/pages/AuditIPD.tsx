@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Search, FilePlus, RefreshCw, Plus, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import dayjs from 'dayjs';
 
 interface AuditCase {
   hn: string;
@@ -428,10 +429,10 @@ export default function AuditIPD() {
                         {c.an}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-600">
-                        {c.regdate}
+                        {dayjs(c.regdate).format('DD/MM/YYYY')}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-600">
-                        {c.dchdate}
+                        {dayjs(c.dchdate).format('DD/MM/YYYY')}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-600">
                         {c.doctor_name}

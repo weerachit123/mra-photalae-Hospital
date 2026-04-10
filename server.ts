@@ -899,16 +899,28 @@ async function startServer() {
 
   // Fetch random OPD cases (Uses HOS Database)
   app.post('/api/audit/opd/random', async (req, res) => {
-    const { startDate, endDate, limit = 6, depCode = '042' } = req.body;
+    const { startDate, endDate, limit = 6, depCode = '042', excludeHns = [] } = req.body;
     
+    // Default date range if missing
+    const sDate = startDate || '2026-01-01';
+    const eDate = endDate || '2026-03-31';
+
     try {
       if (hosPool) {
         let positionCondition = "AND d.position_id = '1'"; // Default for other departments
         if (depCode === '005') {
-          positionCondition = "AND d.position_id = '2'";
+          positionCondition = "AND d.position_id = '5'"; // Dental
         } else if (depCode === '041' || depCode === '042') {
           positionCondition = ""; // No position_id filter for these departments
         }
+
+        let excludeCondition = "";
+        const params: any[] = [sDate, eDate, depCode];
+        if (excludeHns.length > 0) {
+          excludeCondition = `AND o.hn NOT IN (?)`;
+          params.push(excludeHns);
+        }
+        params.push(parseInt(limit));
 
         const query = `
           SELECT o.hn, o.vstdate, d.name as doctor_name 
@@ -921,18 +933,21 @@ async function startServer() {
             AND (oo.cc NOT LIKE '%ญาติ%' AND oo.cc NOT LIKE '%ขอใบ%')
             AND v.pdx NOT IN ('Z000', 'Z017')
             ${positionCondition}
+            ${excludeCondition}
           ORDER BY RAND() 
           LIMIT ?
         `;
-        const [rows] = await hosPool.query(query, [startDate, endDate, depCode, parseInt(limit)]);
-        return res.json({ success: true, data: rows });
+        const [rows] = await hosPool.query(query, params);
+        const caseRows = rows as any[];
+        console.log(`Found ${caseRows.length} OPD cases for dep=${depCode}`);
+        return res.json({ success: true, data: caseRows });
       } else {
         throw new Error('HOS Database pool is not initialized');
       }
     } catch (dbError) {
       const mockData = Array.from({ length: limit }).map((_, i) => ({
         hn: `000${Math.floor(10000 + Math.random() * 90000)}`,
-        vstdate: startDate,
+        vstdate: sDate,
         doctor_name: `นพ. ทดสอบ ${i + 1}`
       }));
       return res.json({ success: true, data: mockData, mock: true });
@@ -941,10 +956,24 @@ async function startServer() {
 
   // Fetch random IPD cases (Uses HOS Database)
   app.post('/api/audit/ipd/random', async (req, res) => {
-    const { startDate, endDate, limit = 5, wardCode = '01' } = req.body;
+    const { startDate, endDate, limit = 5, wardCode = '01', excludeAns = [] } = req.body;
     
+    // Default date range if missing
+    const sDate = startDate || '2026-01-01';
+    const eDate = endDate || '2026-03-31';
+
+    console.log(`Randomizing IPD: ward=${wardCode}, range=${sDate} to ${eDate}, excludeCount=${excludeAns.length}`);
+
     try {
       if (hosPool) {
+        let excludeCondition = "";
+        const params: any[] = [sDate, eDate, wardCode];
+        if (excludeAns.length > 0) {
+          excludeCondition = `AND a.an NOT IN (?)`;
+          params.push(excludeAns);
+        }
+        params.push(parseInt(limit));
+
         const query = `
           SELECT a.an, t.dchdate, d.name as doctor_name, o.hn, t.regdate 
           FROM ovst o
@@ -952,22 +981,26 @@ async function startServer() {
           LEFT JOIN doctor d ON t.dch_doctor = d.code   
           LEFT JOIN an_stat a ON o.an = a.an   
           WHERE o.vstdate BETWEEN ? AND ?   
-            AND d.position_id = '1' 
             AND t.ward = ?
+            ${excludeCondition}
           ORDER BY RAND() 
           LIMIT ?
         `;
-        const [rows] = await hosPool.query(query, [startDate, endDate, wardCode, parseInt(limit)]);
-        return res.json({ success: true, data: rows });
+        // Removed AND d.position_id = '1' to be more permissive
+        const [rows] = await hosPool.query(query, params);
+        const caseRows = rows as any[];
+        console.log(`Found ${caseRows.length} IPD cases`);
+        return res.json({ success: true, data: caseRows });
       } else {
         throw new Error('HOS Database pool is not initialized');
       }
-    } catch (dbError) {
+    } catch (dbError: any) {
+      console.error('IPD Randomizer Error:', dbError.message);
       const mockData = Array.from({ length: limit }).map((_, i) => ({
         hn: `000${Math.floor(10000 + Math.random() * 90000)}`,
         an: `67${Math.floor(100000 + Math.random() * 900000)}`,
-        regdate: startDate,
-        dchdate: endDate,
+        regdate: sDate,
+        dchdate: eDate,
         doctor_name: `นพ. ทดสอบ ${i + 1}`
       }));
       return res.json({ success: true, data: mockData, mock: true });
