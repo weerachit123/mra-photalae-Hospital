@@ -60,6 +60,8 @@ interface MemoSettings {
   proposerPosition: string;
   approverName: string;
   approverPosition: string;
+  approverPosition2?: string;
+  signatureStyle: 'style1' | 'style2';
   labourDeptName: string;
   customLogo?: string;
 }
@@ -74,7 +76,9 @@ const DEFAULT_SETTINGS: MemoSettings = {
   proposerName: "นางสาวเบญจมาศ เมืองเหลือ",
   proposerPosition: "นักวิชาการสาธารณสุข (เวชสถิติ)",
   approverName: "นายพนม ปทุมสูติ",
-  approverPosition: "ผู้อำนวยการโรงพยาบาลโพทะเล",
+  approverPosition: "รักษาการในตำแหน่งผู้อำนวยการโรงพยาบาลโพทะเล",
+  approverPosition2: "ปฏิบัติราชการแทน ผู้อำนวยการโรงพยาบาลโพทะเล",
+  signatureStyle: 'style1',
   labourDeptName: "ห้องคลอด",
   customLogo: ""
 };
@@ -520,6 +524,42 @@ export default function MemorandumReport() {
                 </div>
               </div>
               <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">รูปแบบลายเซ็นผู้อนุมัติ</label>
+                <div className="flex gap-4 mt-1">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input 
+                      type="radio" 
+                      name="sig_style" 
+                      checked={settings.signatureStyle === 'style1'} 
+                      onChange={() => setSettings({...settings, signatureStyle: 'style1'})}
+                      className="w-4 h-4 accent-blue-600"
+                    />
+                    <span className="text-sm text-slate-600">แบบที่ 1 (ปกติ)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input 
+                      type="radio" 
+                      name="sig_style" 
+                      checked={settings.signatureStyle === 'style2'} 
+                      onChange={() => setSettings({...settings, signatureStyle: 'style2'})}
+                      className="w-4 h-4 accent-blue-600"
+                    />
+                    <span className="text-sm text-slate-600">แบบที่ 2 (ปฏิบัติราชการแทน)</span>
+                  </label>
+                </div>
+              </div>
+              {settings.signatureStyle === 'style2' && (
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">ข้อความบรรทัดที่ 3 (สำหรับแบบที่ 2)</label>
+                  <input 
+                    type="text" 
+                    value={settings.approverPosition2 || "ปฏิบัติราชการแทน ผู้อำนวยการโรงพยาบาลโพทะเล"}
+                    onChange={(e) => setSettings({...settings, approverPosition2: e.target.value})}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              )}
+              <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">ชื่อแผนกห้องคลอด (เพื่อแยกสรุป)</label>
                 <input 
                   type="text" 
@@ -672,7 +712,10 @@ export default function MemorandumReport() {
               <div className="text-center w-80">
                 <div className="mb-2">(ลงชื่อ)...........................................................</div>
                 <div className="mb-1">( {settings.approverName} )</div>
-                <div className="text-[14pt]">{settings.approverPosition}</div>
+                <div className="text-[14pt] leading-tight">{settings.approverPosition}</div>
+                {settings.signatureStyle === 'style2' && (
+                  <div className="text-[14pt] leading-tight mt-1">{settings.approverPosition2 || "ปฏิบัติราชการแทน ผู้อำนวยการโรงพยาบาลโพทะเล"}</div>
+                )}
               </div>
             </div>
           </div>

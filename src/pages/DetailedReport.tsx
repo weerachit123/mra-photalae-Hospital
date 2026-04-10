@@ -10,8 +10,8 @@ import autoTable from 'jspdf-autotable';
 import html2pdf from 'html2pdf.js';
 import { getOPDCriteria, getIPDCriteria } from './EditCriteria';
 
-// Criteria Definitions (must match audit forms)
-const OPD_ROWS = [
+// Criteria Structure Definitions (IDs and column counts)
+const OPD_ROWS_STRUCTURE = [
   { id: '1', name: "Patient's Profile", cols: 7 },
   { id: '2', name: "History (1st visit)", cols: 7 },
   { id: '3', name: "Physical examination", cols: 7 },
@@ -24,7 +24,7 @@ const OPD_ROWS = [
   { id: '8', name: "Rehabilitation record", cols: 7, blockedCols: [5, 6] },
 ];
 
-const IPD_ROWS = [
+const IPD_ROWS_STRUCTURE = [
   { id: '1', name: "Discharge summary : Dx, Op", cols: 9 },
   { id: '2', name: "Discharge summary : Other", cols: 9, blockedCols: [7, 8] },
   { id: '3', name: "Informed consent", cols: 9 },
@@ -151,7 +151,7 @@ export default function DetailedReport() {
   }, [filteredWorksheets]);
 
   const calculateMatrix = (wsList: Worksheet[]) => {
-    const rows = reportType === 'OPD' ? OPD_ROWS : IPD_ROWS;
+    const rows = reportType === 'OPD' ? OPD_ROWS_STRUCTURE : IPD_ROWS_STRUCTURE;
     const maxCols = Math.max(...rows.map(r => r.cols));
     
     const counts: Record<string, number[]> = {};
@@ -275,7 +275,7 @@ export default function DetailedReport() {
 
   const handleExcel = () => {
     try {
-      const rows = reportType === 'OPD' ? OPD_ROWS : IPD_ROWS;
+      const rows = reportType === 'OPD' ? OPD_ROWS_STRUCTURE : IPD_ROWS_STRUCTURE;
       const wb = XLSX.utils.book_new();
 
       // Overall Sheet
@@ -363,7 +363,7 @@ export default function DetailedReport() {
   };
 
   const renderMatrixTable = (title: string, matrix: any, subTitle?: string) => {
-    const rows = reportType === 'OPD' ? OPD_ROWS : IPD_ROWS;
+    const rows = reportType === 'OPD' ? OPD_ROWS_STRUCTURE : IPD_ROWS_STRUCTURE;
     const { counts, totals, bonusCounts, deductCounts, totalCases, maxCols } = matrix;
 
     return (
@@ -463,20 +463,21 @@ export default function DetailedReport() {
 
   const renderProblemsSummary = () => {
     if (problemsSummary.length === 0) return null;
+    const yearForCriteria = selectedYear === 'all' ? '2557' : selectedYear;
 
     return (
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-8 break-inside-avoid">
         <div className="px-6 py-4 border-b border-slate-100" style={{ backgroundColor: '#fef2f2' }}>
-          <h3 className="text-sm font-black text-red-800">ปัญหาการตรวจสอบเวชระเบียน (สรุปข้อที่ได้ 0 คะแนน)</h3>
-          <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest mt-1">แสดงเฉพาะรายการที่มีการระบุเหตุผลหรือได้คะแนนเป็น 0</p>
+          <h3 className="text-sm font-black text-red-800">1. เกณฑ์ ตั้งค่าเกณฑ์การประเมิน {yearForCriteria} (แสดงเฉพาะตัวข้อที่ note คะแนน 0)</h3>
+          <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest mt-1">สรุปปัญหาที่พบจากการประเมิน</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-[11px]">
             <thead>
               <tr className="bg-slate-50 text-slate-500 font-bold uppercase tracking-widest border-b border-slate-200">
                 <th className="px-6 py-3 text-left w-1/2">เกณฑ์</th>
-                <th className="px-6 py-3 text-center w-40">ความถี่ (Note 0 คะแนน)</th>
-                <th className="px-6 py-3 text-left">สรุปข้อความ note</th>
+                <th className="px-6 py-3 text-center w-40">ความที่</th>
+                <th className="px-6 py-3 text-left">ข้อความที่ note</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -484,7 +485,7 @@ export default function DetailedReport() {
                 <tr key={idx} className="hover:bg-slate-50 transition-colors">
                   <td className="px-6 py-4 align-top">
                     <div className="space-y-1">
-                      <span className="text-red-600 font-black">- เกณฑ์ หัวข้อที่ {item.rowId} ข้อที่ {item.colIdx + 1}</span>
+                      <span className="text-red-600 font-black">หัวข้อที่ {item.rowId} ข้อที่ {item.colIdx + 1}</span>
                       <p className="text-slate-600 leading-relaxed">{item.criteriaText}</p>
                     </div>
                   </td>

@@ -11,8 +11,10 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-// Define criteria for OPD and IPD
-const OPD_CRITERIA = [
+import { getOPDCriteria, getIPDCriteria } from './EditCriteria';
+
+// Define criteria structure for OPD and IPD (IDs and column counts)
+const OPD_CRITERIA_STRUCTURE = [
   { id: '1', name: "Patient's Profile", cols: 7 },
   { id: '2', name: "History (1st visit)", cols: 7 },
   { id: '3', name: "Physical examination", cols: 7 },
@@ -25,7 +27,7 @@ const OPD_CRITERIA = [
   { id: '8', name: "Rehabilitation record", cols: 7, blockedCols: [5, 6] },
 ];
 
-const IPD_CRITERIA = [
+const IPD_CRITERIA_STRUCTURE = [
   { id: '1', name: "Discharge summary : Dx, Op", cols: 9 },
   { id: '2', name: "Discharge summary : Other", cols: 9, blockedCols: [7, 8] },
   { id: '3', name: "Informed consent", cols: 9 },
@@ -136,6 +138,8 @@ export default function DashboardStats() {
       if (!deptStats[ws.department]) deptStats[ws.department] = { earned: 0, total: 0, count: 0 };
       if (!roundStats[ws.name]) roundStats[ws.name] = { earned: 0, total: 0, count: 0 };
 
+      const criteria = ws.type === 'OPD' ? OPD_CRITERIA_STRUCTURE : IPD_CRITERIA_STRUCTURE;
+
       ws.cases.forEach(c => {
         totalCases++;
         if (c.status === 'audited' && c.scores) {
@@ -143,19 +147,30 @@ export default function DashboardStats() {
           let caseTotal = 0;
           let caseEarned = 0;
 
-          Object.entries(c.scores).forEach(([key, val]) => {
-            if (val === '1') {
-              if (key.endsWith('_bonus')) {
-                caseEarned += 1;
-              } else if (key.endsWith('_deduct')) {
-                caseEarned -= 1;
-              } else {
-                caseEarned += 1;
-                caseTotal += 1;
-              }
-            } else if (val === '0') {
+          criteria.forEach(row => {
+            const isNA = c.scores?.[`${row.id}_NA`] === '1';
+            const isMiss = c.scores?.[`${row.id}_M`] === '1';
+            const isNo = c.scores?.[`${row.id}_O`] === '1';
+
+            if (isNA) return;
+
+            for (let i = 0; i < row.cols; i++) {
+              if (row.blockedCols?.includes(i)) continue;
+
               caseTotal += 1;
+              if (isMiss || isNo) {
+                // 0 points
+              } else {
+                const val = c.scores?.[`${row.id}_${i}`] || '1';
+                if (val === '1') {
+                  caseEarned += 1;
+                }
+              }
             }
+
+            // Bonus/Deduct
+            if (c.scores?.[`${row.id}_bonus`] === '1') caseEarned += 1;
+            if (c.scores?.[`${row.id}_deduct`] === '1') caseEarned -= 1;
           });
 
           earnedPoints += caseEarned;
@@ -195,7 +210,7 @@ export default function DashboardStats() {
 
   // Matrix Data Calculation
   const matrixData = useMemo(() => {
-    const criteria = reportType === 'OPD' ? OPD_CRITERIA : IPD_CRITERIA;
+    const criteria = reportType === 'OPD' ? OPD_CRITERIA_STRUCTURE : IPD_CRITERIA_STRUCTURE;
     const depts = selectedDept === 'all' ? departments : [selectedDept];
     
     return depts.map(dept => {
@@ -259,7 +274,7 @@ export default function DashboardStats() {
 
   const handleExcel = () => {
     try {
-      const criteria = reportType === 'OPD' ? OPD_CRITERIA : IPD_CRITERIA;
+      const criteria = reportType === 'OPD' ? OPD_CRITERIA_STRUCTURE : IPD_CRITERIA_STRUCTURE;
       const data = matrixData.map(row => {
         const exportRow: any = { 'แผนก/วอร์ด': row.department || 'Unknown' };
         criteria.forEach(c => {
@@ -281,7 +296,7 @@ export default function DashboardStats() {
   const handlePDF = () => {
     try {
       const doc = new jsPDF('l', 'mm', 'a4');
-      const criteria = reportType === 'OPD' ? OPD_CRITERIA : IPD_CRITERIA;
+      const criteria = reportType === 'OPD' ? OPD_CRITERIA_STRUCTURE : IPD_CRITERIA_STRUCTURE;
       
       doc.setFont('helvetica', 'bold');
       doc.text(`Medical Record Audit Summary Report (${reportType})`, 14, 15);
@@ -519,7 +534,7 @@ export default function DashboardStats() {
             <thead>
               <tr className="bg-slate-50 text-slate-500 font-bold uppercase tracking-widest border-b border-slate-200">
                 <th className="px-4 py-3 sticky left-0 bg-slate-50 z-10 min-w-[150px]">แผนก/วอร์ด</th>
-                {(reportType === 'OPD' ? OPD_CRITERIA : IPD_CRITERIA).map(c => (
+                {(reportType === 'OPD' ? OPD_CRITERIA_STRUCTURE : IPD_CRITERIA_STRUCTURE).map(c => (
                   <th key={c.id} className="px-4 py-3 text-center min-w-[120px]">{c.name}</th>
                 ))}
               </tr>
@@ -530,7 +545,7 @@ export default function DashboardStats() {
                   <td className="px-4 py-3 font-bold text-slate-700 sticky left-0 bg-white group-hover:bg-slate-50 z-10 border-r border-slate-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
                     {row.department}
                   </td>
-                  {(reportType === 'OPD' ? OPD_CRITERIA : IPD_CRITERIA).map(c => {
+                  {(reportType === 'OPD' ? OPD_CRITERIA_STRUCTURE : IPD_CRITERIA_STRUCTURE).map(c => {
                     const val = row[c.id];
                     return (
                       <td key={c.id} className="px-4 py-3 text-center">
@@ -548,7 +563,7 @@ export default function DashboardStats() {
               ))}
               {matrixData.length === 0 && (
                 <tr>
-                  <td colSpan={(reportType === 'OPD' ? OPD_CRITERIA : IPD_CRITERIA).length + 1} className="px-6 py-12 text-center text-slate-400 font-bold">
+                  <td colSpan={(reportType === 'OPD' ? OPD_CRITERIA_STRUCTURE : IPD_CRITERIA_STRUCTURE).length + 1} className="px-6 py-12 text-center text-slate-400 font-bold">
                     ไม่พบข้อมูลการประเมิน {reportType} ในเงื่อนไขที่เลือก
                   </td>
                 </tr>

@@ -242,7 +242,7 @@ export default function Login() {
             Phothale Hospital Quality Assurance
           </p>
           <div className="flex flex-col md:flex-row justify-center items-center gap-2 text-slate-400 text-[10px] font-medium">
-            <span>© 2026 photalae Hospital</span>
+            <span>© 2026 photalae Hospital v1.0.0</span>
             <span className="hidden md:inline text-slate-300">|</span>
             <span>Created by Weerachit Klinhom Mrs37</span>
           </div>

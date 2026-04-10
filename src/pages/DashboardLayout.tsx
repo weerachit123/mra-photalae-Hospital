@@ -160,7 +160,7 @@ export default function DashboardLayout() {
       <footer className="bg-white border-t border-slate-200 py-6 mt-auto">
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row justify-center items-center gap-2 text-slate-500 text-sm font-medium">
-            <span>© 2026 photalae Hospital</span>
+            <span>© 2026 photalae Hospital v1.0.0</span>
             <span className="hidden md:inline text-slate-300">|</span>
             <span>Created by Weerachit Klinhom Mrs37</span>
           </div>

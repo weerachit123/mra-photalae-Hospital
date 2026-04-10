@@ -80,8 +80,8 @@ async function initHosPool(config: any = hosDbConfig) {
         if (field.type === 'VAR_STRING' || field.type === 'STRING' || field.type === 'BLOB' || field.type === 'TEXT') {
           const buf = field.buffer();
           if (buf) {
-            // Force TIS-620 decoding
-            return iconv.decode(buf, 'tis620');
+            // Use the configured charset for decoding
+            return iconv.decode(buf, charset);
           }
           return null;
         }
@@ -262,33 +262,30 @@ async function startServer() {
         `);
 
         // Insert default departments if table is empty
-        const [deptRows]: any = await connection.query('SELECT COUNT(*) as count FROM departments');
-        if (deptRows[0].count === 0) {
-          const defaultDepts = [
-            // OPD
-            { code: '001', name: 'อายุรกรรม', type: 'OPD', limit: 10 },
-            { code: '002', name: 'ศัลยกรรม', type: 'OPD', limit: 10 },
-            { code: '003', name: 'สูติ-นรีเวชกรรม', type: 'OPD', limit: 10 },
-            { code: '004', name: 'กุมารเวชกรรม', type: 'OPD', limit: 10 },
-            { code: '005', name: 'ศัลยกรรมกระดูก', type: 'OPD', limit: 10 },
-            { code: '011', name: 'จักษุ', type: 'OPD', limit: 10 },
-            { code: '042', name: 'ทันตกรรม', type: 'OPD', limit: 10 },
-            { code: '012', name: 'โสต ศอ นาสิก', type: 'OPD', limit: 10 },
-            { code: '016', name: 'เวชกรรมฟื้นฟู', type: 'OPD', limit: 10 },
-            { code: '017', name: 'แพทย์แผนไทย', type: 'OPD', limit: 10 },
-            // IPD
-            { code: '01', name: 'ตึกผู้ป่วยในชาย', type: 'IPD', limit: 10 },
-            { code: '02', name: 'ตึกผู้ป่วยในหญิง', type: 'IPD', limit: 10 },
-            { code: '03', name: 'ตึกสูติ-นรีเวช', type: 'IPD', limit: 10 },
-            { code: '04', name: 'ตึกกุมารเวช', type: 'IPD', limit: 10 },
-            { code: '05', name: 'ICU', type: 'IPD', limit: 10 },
-          ];
-          for (const d of defaultDepts) {
-            await connection.query(
-              'INSERT INTO departments (code, name, type, default_limit) VALUES (?, ?, ?, ?)',
-              [d.code, d.name, d.type, d.limit]
-            );
-          }
+        const defaultDepts = [
+          // OPD
+          { code: '001', name: 'อายุรกรรม', type: 'OPD', limit: 10 },
+          { code: '002', name: 'ศัลยกรรม', type: 'OPD', limit: 10 },
+          { code: '003', name: 'สูติ-นรีเวชกรรม', type: 'OPD', limit: 10 },
+          { code: '004', name: 'กุมารเวชกรรม', type: 'OPD', limit: 10 },
+          { code: '005', name: 'ศัลยกรรมกระดูก', type: 'OPD', limit: 10 },
+          { code: '011', name: 'จักษุ', type: 'OPD', limit: 10 },
+          { code: '042', name: 'ทันตกรรม', type: 'OPD', limit: 10 },
+          { code: '012', name: 'โสต ศอ นาสิก', type: 'OPD', limit: 10 },
+          { code: '016', name: 'เวชกรรมฟื้นฟู', type: 'OPD', limit: 10 },
+          { code: '017', name: 'แพทย์แผนไทย', type: 'OPD', limit: 10 },
+          // IPD
+          { code: '01', name: 'ตึกผู้ป่วยในชาย', type: 'IPD', limit: 10 },
+          { code: '02', name: 'ตึกผู้ป่วยในหญิง', type: 'IPD', limit: 10 },
+          { code: '03', name: 'ตึกสูติ-นรีเวช', type: 'IPD', limit: 10 },
+          { code: '04', name: 'ตึกกุมารเวช', type: 'IPD', limit: 10 },
+          { code: '05', name: 'ICU', type: 'IPD', limit: 10 },
+        ];
+        for (const d of defaultDepts) {
+          await connection.query(
+            'INSERT IGNORE INTO departments (code, name, type, default_limit) VALUES (?, ?, ?, ?)',
+            [d.code, d.name, d.type, d.limit]
+          );
         }
 
         await connection.query(`
@@ -306,8 +303,8 @@ async function startServer() {
           )
         `);
         
-        // Add new columns if they don't exist
-        const columnsToAdd = [
+        // Add new columns if they don't exist (for existing databases)
+        const worksheetCols = [
           { name: 'criteria_year', type: "VARCHAR(4) DEFAULT '2557'" },
           { name: 'depCode', type: 'VARCHAR(50)' },
           { name: 'wardCode', type: 'VARCHAR(50)' },
@@ -315,13 +312,11 @@ async function startServer() {
           { name: 'endDate', type: 'DATE' }
         ];
 
-        for (const col of columnsToAdd) {
+        for (const col of worksheetCols) {
           try {
             await connection.query(`ALTER TABLE worksheets ADD COLUMN ${col.name} ${col.type}`);
           } catch (e: any) {
-            if (e.code !== 'ER_DUP_FIELDNAME') {
-              console.error(`Error adding ${col.name} column:`, e);
-            }
+            if (e.code !== 'ER_DUP_FIELDNAME') console.error(`Error adding ${col.name} to worksheets:`, e);
           }
         }
 
@@ -343,19 +338,16 @@ async function startServer() {
           )
         `);
         
-        // Add auditor_name and audit_date columns if they don't exist
-        try {
-          await connection.query(`ALTER TABLE audit_cases ADD COLUMN auditor_name VARCHAR(255)`);
-        } catch (e: any) {
-          if (e.code !== 'ER_DUP_FIELDNAME') {
-            console.error('Error adding auditor_name column:', e);
-          }
-        }
-        try {
-          await connection.query(`ALTER TABLE audit_cases ADD COLUMN audit_date DATETIME`);
-        } catch (e: any) {
-          if (e.code !== 'ER_DUP_FIELDNAME') {
-            console.error('Error adding audit_date column:', e);
+        // Add missing columns to audit_cases (for existing databases)
+        const caseCols = [
+          { name: 'auditor_name', type: 'VARCHAR(255)' },
+          { name: 'audit_date', type: 'DATETIME' }
+        ];
+        for (const col of caseCols) {
+          try {
+            await connection.query(`ALTER TABLE audit_cases ADD COLUMN ${col.name} ${col.type}`);
+          } catch (e: any) {
+            if (e.code !== 'ER_DUP_FIELDNAME') console.error(`Error adding ${col.name} to audit_cases:`, e);
           }
         }
         
@@ -907,11 +899,10 @@ async function startServer() {
 
     try {
       if (hosPool) {
-        let positionCondition = "AND d.position_id = '1'"; // Default for other departments
+        let positionCondition = ""; // Remove restrictive position_id filter
         if (depCode === '005') {
-          positionCondition = "AND d.position_id = '5'"; // Dental
-        } else if (depCode === '041' || depCode === '042') {
-          positionCondition = ""; // No position_id filter for these departments
+          // Keep dental specific if needed, but user said it's not working, so let's just allow all
+          positionCondition = ""; 
         }
 
         let excludeCondition = "";
