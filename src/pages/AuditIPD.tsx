@@ -43,7 +43,7 @@ export default function AuditIPD() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [isMock, setIsMock] = useState(false);
-  const [specificAn, setSpecificAn] = useState('');
+  const [anInputs, setAnInputs] = useState<Record<number, string>>({});
   const [isSearchingAn, setIsSearchingAn] = useState(false);
 
   // States for Worksheet Name
@@ -150,25 +150,23 @@ export default function AuditIPD() {
   };
 
   const handleSearchSpecificAn = async (index: number) => {
-    if (!specificAn.trim()) return;
+    const an = anInputs[index];
+    if (!an || !an.trim()) return;
     setIsSearchingAn(true);
     try {
-      const response = await fetch('/api/audit/ipd/specific', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ an: specificAn }),
-      });
+      const response = await fetch(`/api/audit/ipd/an/${an.trim()}`);
       const data = await response.json();
+      
       if (data.success && data.data) {
         const newCases = [...cases];
         newCases[index] = data.data;
         setCases(newCases);
-        setSpecificAn('');
+        setAnInputs(prev => ({ ...prev, [index]: '' })); // Clear after success
       } else {
-        alert('ไม่พบข้อมูล AN ที่ระบุ');
+        alert(data.message || 'ไม่พบข้อมูล AN นี้');
       }
     } catch (err) {
-      console.error('Failed to search specific AN', err);
+      alert('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้');
     } finally {
       setIsSearchingAn(false);
     }
@@ -438,13 +436,14 @@ export default function AuditIPD() {
                         {c.doctor_name}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex items-center justify-center gap-2 transition-opacity">
                           <div className="flex items-center">
                             <input
                               type="text"
                               placeholder="ระบุ AN..."
+                              value={anInputs[index] || ''}
                               className="w-24 px-2 py-1 text-xs border border-slate-200 rounded-l-lg focus:outline-none focus:border-emerald-500"
-                              onChange={(e) => setSpecificAn(e.target.value)}
+                              onChange={(e) => setAnInputs(prev => ({ ...prev, [index]: e.target.value }))}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
                                   handleSearchSpecificAn(index);

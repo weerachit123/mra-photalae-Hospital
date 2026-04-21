@@ -44,7 +44,7 @@ export default function AuditOPD() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [isMock, setIsMock] = useState(false);
-  const [specificVn, setSpecificVn] = useState('');
+  const [vnInputs, setVnInputs] = useState<Record<number, string>>({});
   const [isSearchingVn, setIsSearchingVn] = useState(false);
 
   // New states for Worksheet Name
@@ -144,17 +144,18 @@ export default function AuditOPD() {
   };
 
   const handleSearchSpecificVn = async (index: number) => {
-    if (!specificVn.trim()) return;
+    const vn = vnInputs[index];
+    if (!vn || !vn.trim()) return;
     setIsSearchingVn(true);
     try {
-      const response = await fetch(`/api/audit/opd/vn/${specificVn.trim()}`);
+      const response = await fetch(`/api/audit/opd/vn/${vn.trim()}`);
       const data = await response.json();
       
       if (data.success && data.data) {
         const newCases = [...cases];
         newCases[index] = data.data;
         setCases(newCases);
-        setSpecificVn(''); // Clear after success
+        setVnInputs(prev => ({ ...prev, [index]: '' })); // Clear after success
       } else {
         alert(data.message || 'ไม่พบข้อมูล VN นี้');
       }
@@ -443,13 +444,14 @@ export default function AuditOPD() {
                         {c.doctor_name}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex items-center justify-center gap-2 transition-opacity">
                           <div className="flex items-center">
                             <input
                               type="text"
                               placeholder="ระบุ VN..."
+                              value={vnInputs[index] || ''}
                               className="w-24 px-2 py-1 text-xs border border-slate-200 rounded-l-lg focus:outline-none focus:border-blue-500"
-                              onChange={(e) => setSpecificVn(e.target.value)}
+                              onChange={(e) => setVnInputs(prev => ({ ...prev, [index]: e.target.value }))}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
                                   handleSearchSpecificVn(index);

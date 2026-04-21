@@ -31,7 +31,7 @@ const hosDbConfig = {
   password: process.env.HOS_DB_PASSWORD || '',
   database: process.env.HOS_DB_NAME || 'hos',
   port: parseInt(process.env.HOS_DB_PORT || '3306'),
-  connectTimeout: 10000,
+  connectTimeout: 3000,
   charset: 'tis620'
 };
 
@@ -43,7 +43,7 @@ const mraDbConfig = {
   password: process.env.MRA_DB_PASSWORD || '',
   database: process.env.MRA_DB_NAME || 'mra_audit',
   port: parseInt(process.env.MRA_DB_PORT || '3306'),
-  connectTimeout: 10000,
+  connectTimeout: 3000,
   charset: 'utf8mb4'
 };
 
@@ -97,7 +97,7 @@ async function initHosPool(config: any = hosDbConfig) {
     return true;
   } catch (e: any) {
     if (e.code === 'ETIMEDOUT') {
-      console.error('Failed to initialize HOS MySQL pool: Connection Timeout. Please check if the IP 192.168.0.5 is reachable from this cloud environment.');
+      console.warn('HOS Database (192.168.0.5) timeout - This is expected when running on Cloud. Falling back to Mock mode for HosXP.');
     } else {
       console.error('Failed to initialize HOS MySQL pool:', e);
     }
@@ -128,9 +128,9 @@ async function initMraPool(config: any = mraDbConfig) {
     return true;
   } catch (e: any) {
     if (e.code === 'ETIMEDOUT') {
-      console.error('Failed to initialize MRA MySQL pool: Connection Timeout. Please check if the IP 192.168.0.5 is reachable from this cloud environment.');
+      console.warn('MRA Database connection skipped (Timeout - Mock mode enabled).');
     } else {
-      console.error('Failed to initialize MRA MySQL pool:', e);
+      console.error('Failed to initialize MRA MySQL pool:', e.message);
     }
     mraPool = null;
     return false;
@@ -157,7 +157,7 @@ async function saveJsonData(data: any) {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = parseInt(process.env.PORT || '3000', 10);
 
   app.use(express.json());
 
@@ -592,11 +592,18 @@ async function startServer() {
 
   // Get specific VN for OPD
   app.get('/api/audit/opd/vn/:vn', async (req, res) => {
-    if (!hosPool) {
-      return res.status(500).json({ success: false, message: 'HOS Database not connected' });
-    }
-
     const { vn } = req.params;
+
+    if (!hosPool) {
+      return res.json({
+        success: true,
+        data: {
+          hn: Math.floor(Math.random() * 1000000).toString().padStart(7, '0'),
+          vstdate: new Date().toISOString().split('T')[0],
+          doctor_name: 'นพ. จำลอง (Mock)'
+        }
+      });
+    }
 
     try {
       const query = `
@@ -630,11 +637,20 @@ async function startServer() {
 
   // Get specific AN for IPD
   app.get('/api/audit/ipd/an/:an', async (req, res) => {
-    if (!hosPool) {
-      return res.status(500).json({ success: false, message: 'HOS Database not connected' });
-    }
-
     const { an } = req.params;
+
+    if (!hosPool) {
+      return res.json({
+        success: true,
+        data: {
+          hn: Math.floor(Math.random() * 1000000).toString().padStart(7, '0'),
+          an: an,
+          regdate: new Date().toISOString().split('T')[0],
+          dchdate: new Date().toISOString().split('T')[0],
+          doctor_name: 'นพ. จำลอง (Mock)'
+        }
+      });
+    }
 
     try {
       const query = `
