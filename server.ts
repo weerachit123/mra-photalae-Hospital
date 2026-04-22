@@ -72,30 +72,31 @@ async function initHosPool(config: any = hosDbConfig) {
   }
   try {
     if (hosPool) await hosPool.end();
-    // We explicitly force utf8 here because the hospital's database is returning UTF-8 byte sequences.
-    // By passing nothing or 'utf8', mysql2 will natively decode the text correctly.
+    
+    const targetCharset = config.charset || 'tis620';
+    
     hosPool = mysql.createPool({
       host: config.host,
       user: config.user,
       password: config.password,
       database: config.database,
       port: parseInt(config.port || '3306'),
-      charset: 'tis620',
-      connectTimeout: 3000,
+      charset: targetCharset,
+      connectTimeout: 5000,
       supportBigNumbers: true,
       bigNumberStrings: true
     });
     
     // Test connection and strictly set session charset
     const conn = await hosPool.getConnection();
-    await conn.query('SET NAMES tis620');
+    await conn.query(`SET NAMES ${targetCharset}`);
     conn.release();
     
-    console.log(`HOS MySQL pool initialized with charset: utf8`);
+    console.log(`HOS MySQL pool initialized with charset: ${targetCharset}`);
     return true;
   } catch (e: any) {
     if (e.code === 'ETIMEDOUT') {
-      console.warn('HOS Database (192.168.0.5) timeout - This is expected when running on Cloud. Falling back to Mock mode for HosXP.');
+      console.warn('HOS Database timeout - Falling back to Mock mode for HosXP.');
     } else {
       console.error('Failed to initialize HOS MySQL pool:', e);
     }
@@ -113,8 +114,16 @@ async function initMraPool(config: any = mraDbConfig) {
   try {
     if (mraPool) await mraPool.end();
     mraPool = mysql.createPool({
-      ...config,
-      charset: 'utf8mb4'
+      host: config.host,
+      user: config.user,
+      password: config.password,
+      database: config.database,
+      port: parseInt(config.port || '3306'),
+      charset: 'utf8mb4',
+      connectTimeout: 5000,
+      waitForConnections: true,
+      connectionLimit: 10,
+      queueLimit: 0
     });
     
     // Test and set session charset
@@ -125,11 +134,7 @@ async function initMraPool(config: any = mraDbConfig) {
     console.log('MRA MySQL pool initialized with charset: utf8mb4');
     return true;
   } catch (e: any) {
-    if (e.code === 'ETIMEDOUT') {
-      console.warn('MRA Database connection skipped (Timeout - Mock mode enabled).');
-    } else {
-      console.error('Failed to initialize MRA MySQL pool:', e.message);
-    }
+    console.error('Failed to initialize MRA MySQL pool:', e.message);
     mraPool = null;
     return false;
   }
@@ -159,6 +164,12 @@ async function startServer() {
 
   app.use(express.json());
 
+  // Force UTF-8 on all responses
+  app.use((req, res, next) => {
+    res.header('Content-Type', 'application/json; charset=utf-8');
+    next();
+  });
+
   // Request logger
   app.use((req, res, next) => {
     console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
@@ -166,6 +177,48 @@ async function startServer() {
   });
 
   // --- API Routes ---
+
+  // Test Database Connection
+  app.post('/api/test-db-connection', async (req, res) => {
+    const { config, type } = req.body;
+    if (!config || !config.host) {
+      return res.status(400).json({ success: false, message: 'Invalid configuration' });
+    }
+
+    try {
+      const connConfig = {
+        host: config.host,
+        user: config.user,
+        password: config.password,
+        port: parseInt(config.port || '3306'),
+        database: type === 'hos' ? config.hosDatabase : config.database,
+        connectTimeout: 5000,
+        charset: type === 'hos' ? (config.charset || 'tis620') : 'utf8mb4'
+      };
+
+      const connection = await mysql.createConnection(connConfig);
+      
+      // Perform a simple query to test the connection
+      await connection.query('SELECT 1');
+      
+      // Check session charset
+      if (type === 'hos') {
+        await connection.query(`SET NAMES ${config.charset || 'tis620'}`);
+      } else {
+        await connection.query('SET NAMES utf8mb4');
+      }
+
+      await connection.end();
+      res.json({ success: true, message: `เชื่อมต่อกับฐานข้อมูล ${type === 'hos' ? 'HosXP' : 'MRA'} สำเร็จ` });
+    } catch (error: any) {
+      console.error(`Connection test failed for ${type}:`, error);
+      res.status(500).json({ 
+        success: false, 
+        message: `เชื่อมต่อ ${type === 'hos' ? 'HosXP' : 'MRA'} ล้มเหลว: ${error.message}`,
+        error: error.code
+      });
+    }
+  });
 
   // HOS Database Setup
   app.post('/api/setup-hos-db', async (req, res) => {
@@ -258,6 +311,8 @@ async function startServer() {
             UNIQUE KEY code_type (code, type)
           ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
         `);
+        // Ensure table is utf8mb4
+        await connection.query('ALTER TABLE departments CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
 
         // Insert default departments if table is empty
         const defaultDepts = [
@@ -301,6 +356,8 @@ async function startServer() {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
         `);
+        // Ensure table is utf8mb4
+        await connection.query('ALTER TABLE worksheets CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
         
         // Add new columns if they don't exist (for existing databases)
         const worksheetCols = [
@@ -337,6 +394,8 @@ async function startServer() {
             FOREIGN KEY (worksheet_id) REFERENCES worksheets(id) ON DELETE CASCADE
           ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
         `);
+        // Ensure table is utf8mb4
+        await connection.query('ALTER TABLE audit_cases CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
         
         // Add missing columns to audit_cases (for existing databases)
         const caseCols = [

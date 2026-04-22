@@ -12,6 +12,7 @@ interface AuditCase {
 }
 
 const WARDS = [
+  { code: 'ALL', name: 'รวมทุกตึก (ดึงตามจำนวนที่กำหนด)', defaultLimit: 0 },
   { code: '01', name: 'ตึกผู้ป่วยใน(IPD)', defaultLimit: 5 },
   { code: '02', name: 'ตึกห้องคลอด(PP)', defaultLimit: 5 },
   { code: '03', name: 'HomeWard', defaultLimit: 5 },
@@ -35,9 +36,9 @@ export default function AuditIPD() {
 
   const [startDate, setStartDate] = useState('2026-01-01');
   const [endDate, setEndDate] = useState('2026-03-31');
-  const [selectedWard, setSelectedWard] = useState(WARDS[0].code); // Default to 01
+  const [selectedWard, setSelectedWard] = useState(WARDS[1].code); // Default to 01
   const [criteriaYear, setCriteriaYear] = useState('2557');
-  const [limit, setLimit] = useState(WARDS[0].defaultLimit);
+  const [limit, setLimit] = useState(WARDS[1].defaultLimit);
   const [deadlineDays, setDeadlineDays] = useState(30);
   const [cases, setCases] = useState<AuditCase[]>([]);
   const [loading, setLoading] = useState(false);
@@ -125,26 +126,65 @@ export default function AuditIPD() {
     setLoading(true);
     setError('');
     setIsMock(false);
+    setCases([]);
     
     try {
-      const response = await fetch('/api/audit/ipd/random', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ startDate, endDate, limit, wardCode: selectedWard }),
-      });
+      if (selectedWard === 'ALL') {
+        const wardsToFetch = WARDS.filter(w => w.code !== 'ALL');
+        let allCases: AuditCase[] = [];
+        let anyMock = false;
 
-      const data = await response.json();
-
-      if (data.success) {
-        setCases(data.data);
-        if (data.data.length === 0) {
-          setError('ไม่พบข้อมูลเคสตามเงื่อนไขที่กำหนด กรุณาลองเปลี่ยนวันที่หรือวอร์ด');
+        for (const ward of wardsToFetch) {
+          try {
+            const response = await fetch('/api/audit/ipd/random', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ startDate, endDate, limit: ward.defaultLimit, wardCode: ward.code }),
+            });
+            const data = await response.json();
+            if (data.success && data.data) {
+              const wardCases = data.data.map((c: any) => ({
+                ...c,
+                wardCode: ward.code,
+                wardName: ward.name
+              }));
+              allCases = [...allCases, ...wardCases];
+              if (data.mock) anyMock = true;
+            }
+          } catch (e) {
+            console.error(`Failed to fetch for ward ${ward.name}`, e);
+          }
         }
-        if (data.mock) {
-          setIsMock(true);
+        
+        setCases(allCases);
+        setIsMock(anyMock);
+        if (allCases.length === 0) {
+          setError('ไม่พบข้อมูลเคสตามเงื่อนไขที่กำหนด กรุณาลองเปลี่ยนวันที่');
         }
       } else {
-        setError(data.message || 'เกิดข้อผิดพลาดในการดึงข้อมูล');
+        const response = await fetch('/api/audit/ipd/random', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ startDate, endDate, limit, wardCode: selectedWard }),
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          const wardInfo = WARDS.find(w => w.code === selectedWard);
+          const fetchedCases = data.data.map((c: any) => ({
+            ...c,
+            wardCode: selectedWard,
+            wardName: wardInfo?.name || selectedWard
+          }));
+          setCases(fetchedCases);
+          setIsMock(data.mock || false);
+          if (data.data.length === 0) {
+            setError('ไม่พบข้อมูลเคสตามเงื่อนไขที่กำหนด กรุณาลองเปลี่ยนวันที่');
+          }
+        } else {
+          setError(data.message || 'เกิดข้อผิดพลาดในการดึงข้อมูล');
+        }
       }
     } catch (err) {
       setError('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้');
@@ -208,42 +248,77 @@ export default function AuditIPD() {
       return;
     }
     setSaving(true);
-    const wardName = WARDS.find(w => w.code === selectedWard)?.name || selectedWard;
     
-    const newWorksheet = {
-      id: `ws_${Date.now()}`,
-      name: selectedWorksheet,
-      type: 'IPD',
-      department: wardName,
-      wardCode: selectedWard,
-      startDate,
-      endDate,
-      deadline: dayjs().add(deadlineDays, 'day').format('YYYY-MM-DD'),
-      criteria_year: criteriaYear,
-      createdAt: new Date().toISOString(),
-      cases: cases.map(c => ({ ...c, status: 'pending' }))
-    };
-
     try {
-      const response = await fetch('/api/mra/worksheets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newWorksheet)
-      });
-      const data = await response.json();
-      if (data.success) {
-        alert(`สร้างใบงาน "${selectedWorksheet}" สำหรับวอร์ด ${wardName} จำนวน ${cases.length} เคส เรียบร้อยแล้ว`);
+      if (selectedWard === 'ALL') {
+        const groupedCases = cases.reduce((acc, currentCase) => {
+          const code = currentCase.wardCode || 'unknown';
+          if (!acc[code]) acc[code] = [];
+          acc[code].push(currentCase);
+          return acc;
+        }, {} as Record<string, AuditCase[]>);
+
+        for (const [code, wardCasesValue] of Object.entries(groupedCases)) {
+          const wardCases = wardCasesValue as AuditCase[];
+          if (wardCases.length === 0) continue;
+          
+          const wardName = WARDS.find(w => w.code === code)?.name || code;
+          const newWorksheetId = `ws_ipd_${Date.now()}_${code}`;
+          
+          const newWorksheet = {
+            id: newWorksheetId,
+            name: selectedWorksheet,
+            type: 'IPD',
+            department: wardName,
+            wardCode: code,
+            startDate,
+            endDate,
+            deadline: dayjs().add(deadlineDays, 'day').format('YYYY-MM-DD'),
+            criteria_year: criteriaYear,
+            createdAt: new Date().toISOString(),
+            cases: wardCases.map(c => ({ ...c, status: 'pending' }))
+          };
+
+          await fetch('/api/mra/worksheets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newWorksheet)
+          });
+        }
+        alert(`สร้างใบงาน "${selectedWorksheet}" สำหรับทุกตึกเรียบร้อยแล้ว`);
         navigate('/dashboard/worksheets');
       } else {
-        throw new Error(data.message);
+        const wardName = WARDS.find(w => w.code === selectedWard)?.name || selectedWard;
+        const newWorksheet = {
+          id: `ws_ipd_${Date.now()}`,
+          name: selectedWorksheet,
+          type: 'IPD',
+          department: wardName,
+          wardCode: selectedWard,
+          startDate,
+          endDate,
+          deadline: dayjs().add(deadlineDays, 'day').format('YYYY-MM-DD'),
+          criteria_year: criteriaYear,
+          createdAt: new Date().toISOString(),
+          cases: cases.map(c => ({ ...c, status: 'pending' }))
+        };
+
+        const response = await fetch('/api/mra/worksheets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newWorksheet)
+        });
+        const data = await response.json();
+        if (data.success) {
+          alert(`สร้างใบงาน "${selectedWorksheet}" สำหรับวอร์ด ${wardName} จำนวน ${cases.length} เคส เรียบร้อยแล้ว`);
+          navigate('/dashboard/worksheets');
+        } else {
+          throw new Error(data.message);
+        }
       }
-    } catch (error) {
-      console.error('Failed to save worksheet to DB:', error);
-      // Fallback to localStorage
-      const existing = JSON.parse(localStorage.getItem('mra_worksheets') || '[]');
-      localStorage.setItem('mra_worksheets', JSON.stringify([...existing, newWorksheet]));
-      alert(`สร้างใบงาน "${selectedWorksheet}" เรียบร้อยแล้ว (บันทึกในเครื่อง)`);
-      navigate('/dashboard/worksheets');
+    } catch (error: any) {
+      console.error('Failed to save IPD worksheet to DB:', error);
+      alert('เกิดข้อผิดพลาดในการบันทึกใบงาน: ' + error.message);
     } finally {
       setSaving(false);
     }

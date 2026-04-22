@@ -9,6 +9,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [isSettingUp, setIsSettingUp] = useState(false);
   const [showDbSettings, setShowDbSettings] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
   const [dbConfig, setDbConfig] = useState({
     host: '',
     user: 'root',
@@ -32,6 +33,27 @@ export default function Login() {
       });
     }
   }, []);
+
+  const handleTestConnection = async (type: 'hos' | 'mra') => {
+    setIsTesting(true);
+    try {
+      const response = await fetch('/api/test-db-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: dbConfig, type }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        alert(data.message);
+      } else {
+        alert(`❌ ${data.message}${data.error ? `\nError Code: ${data.error}` : ''}`);
+      }
+    } catch (err) {
+      alert('เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์');
+    } finally {
+      setIsTesting(false);
+    }
+  };
 
   const handleSaveDbConfig = async () => {
     setLoading(true);
@@ -368,20 +390,38 @@ export default function Login() {
                   {isSettingUp ? 'กำลังสร้าง...' : 'คลิกเพื่อสร้าง Database ใหม่'}
                 </button>
               </div>
-              <div className="flex gap-3">
-                <button 
-                  onClick={() => setShowDbSettings(false)} 
-                  className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  onClick={handleSaveDbConfig}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl text-sm font-bold shadow-lg shadow-blue-100 transition-all active:scale-95 flex items-center gap-2"
-                >
-                  <Save className="w-4 h-4" />
-                  บันทึกการตั้งค่า
-                </button>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => handleTestConnection('hos')}
+                    disabled={isTesting}
+                    className="px-3 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-[10px] font-bold hover:bg-emerald-100 transition-all disabled:opacity-50"
+                  >
+                    {isTesting ? '...' : 'ทดสอบ HosXP'}
+                  </button>
+                  <button 
+                    onClick={() => handleTestConnection('mra')}
+                    disabled={isTesting}
+                    className="px-3 py-2 bg-blue-50 text-blue-600 rounded-xl text-[10px] font-bold hover:bg-blue-100 transition-all disabled:opacity-50"
+                  >
+                    {isTesting ? '...' : 'ทดสอบ MRA'}
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => setShowDbSettings(false)} 
+                    className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors"
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    onClick={handleSaveDbConfig}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl text-sm font-bold shadow-lg shadow-blue-100 transition-all active:scale-95 flex items-center gap-2"
+                  >
+                    <Save className="w-4 h-4" />
+                    บันทึก
+                  </button>
+                </div>
               </div>
             </div>
           </div>
