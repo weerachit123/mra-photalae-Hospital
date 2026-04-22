@@ -75,24 +75,10 @@ async function initHosPool(config: any = hosDbConfig) {
     const charset = config.charset || 'tis620';
     hosPool = mysql.createPool({
       ...config,
-      charset: 'binary', // Force binary to get raw bytes
+      // The hospital's database is returning UTF-8 directly, so forcing TIS-620 binary decode double-mangles it.
+      charset: config.charset === 'tis620' ? 'tis620' : 'utf8', 
       supportBigNumbers: true,
-      bigNumberStrings: true,
-      typeCast: function (field, next) {
-        // All string-like types including BLOBs which HosXP sometimes uses for text
-        const stringTypes = [
-          'VAR_STRING', 'STRING', 'BLOB', 'TEXT', 'TINY_BLOB', 'MEDIUM_BLOB', 'LONG_BLOB'
-        ];
-        
-        if (stringTypes.includes(field.type)) {
-          const buf = field.buffer();
-          if (buf) {
-            return iconv.decode(buf, charset);
-          }
-          return null;
-        }
-        return next();
-      }
+      bigNumberStrings: true
     });
     
     // Test connection
@@ -1303,7 +1289,12 @@ async function startServer() {
   // Vite middleware
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { 
+        middlewareMode: true,
+        hmr: {
+          port: 3010 // Use an alternative port for HMR to avoid Windows Hyper-V 24678 port conflicts
+        }
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);

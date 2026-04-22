@@ -220,7 +220,7 @@ export default function WorksheetDetail() {
               <p className="mt-1 text-sm text-slate-500 font-medium">
                 <span className="text-slate-400">แผนก/วอร์ด:</span> {worksheet.department} 
                 <span className="mx-2 text-slate-300">|</span> 
-                <span className="text-slate-400">สร้างเมื่อ:</span> {dayjs(worksheet.createdAt).format('DD/MM/YYYY')}
+                <span className="text-slate-400">สร้างเมื่อ:</span> {worksheet.createdAt ? dayjs(worksheet.createdAt).format('DD/MM/YYYY') : '-'}
               </p>
             </div>
           </div>
@@ -270,7 +270,7 @@ export default function WorksheetDetail() {
                       <td className="px-4 py-5 whitespace-nowrap text-sm font-bold text-slate-400">{index + 1}</td>
                       <td className="px-4 py-5 whitespace-nowrap text-sm font-bold text-slate-800">{c.hn}</td>
                       {!isOPD && <td className="px-4 py-5 whitespace-nowrap text-sm font-bold text-blue-600">{c.an}</td>}
-                      <td className="px-4 py-5 text-sm font-semibold text-slate-600">{dayjs(isOPD ? c.vstdate : c.regdate).format('DD/MM/YYYY')}</td>
+                      <td className="px-4 py-5 text-sm font-semibold text-slate-600">{(isOPD ? c.vstdate : c.regdate) ? dayjs(isOPD ? c.vstdate : c.regdate).format('DD/MM/YYYY') : '-'}</td>
                       <td className="px-4 py-5 text-sm font-semibold text-slate-600">{c.doctor_name}</td>
                       <td className="px-4 py-5 whitespace-nowrap">
                         {isAudited ? (
