@@ -90,7 +90,7 @@ async function initHosPool(config: any = hosDbConfig) {
     const conn = await hosPool.getConnection();
     conn.release();
     
-    console.log(`HOS MySQL pool initialized with charset: ${charset}`);
+    console.log(`HOS MySQL pool initialized with charset: utf8`);
     return true;
   } catch (e: any) {
     if (e.code === 'ETIMEDOUT') {
