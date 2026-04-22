@@ -72,11 +72,16 @@ async function initHosPool(config: any = hosDbConfig) {
   }
   try {
     if (hosPool) await hosPool.end();
-    const charset = config.charset || 'tis620';
+    // We explicitly force utf8 here because the hospital's database is returning UTF-8 byte sequences.
+    // By passing nothing or 'utf8', mysql2 will natively decode the text correctly.
     hosPool = mysql.createPool({
-      ...config,
-      // The hospital's database is returning UTF-8 directly, so forcing TIS-620 binary decode double-mangles it.
-      charset: config.charset === 'tis620' ? 'tis620' : 'utf8', 
+      host: config.host,
+      user: config.user,
+      password: config.password,
+      database: config.database,
+      port: parseInt(config.port || '3306'),
+      charset: 'utf8', 
+      connectTimeout: 3000,
       supportBigNumbers: true,
       bigNumberStrings: true
     });
