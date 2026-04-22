@@ -80,10 +80,21 @@ async function initHosPool(config: any = hosDbConfig) {
       password: config.password,
       database: config.database,
       port: parseInt(config.port || '3306'),
-      charset: 'utf8', 
+      charset: 'tis620', // Connect using tis620 standard
       connectTimeout: 3000,
       supportBigNumbers: true,
-      bigNumberStrings: true
+      bigNumberStrings: true,
+      typeCast: function (field, next) {
+        if (field.type === 'VAR_STRING' || field.type === 'STRING' || field.type === 'BLOB') {
+          const buffer = field.buffer();
+          if (buffer) {
+             // Force iconv-lite to decode the raw bytes specifically as TIS-620
+            return iconv.decode(buffer, 'tis620');
+          }
+          return null;
+        }
+        return next();
+      }
     });
     
     // Test connection
