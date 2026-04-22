@@ -38,6 +38,7 @@ export default function AuditIPD() {
   const [selectedWard, setSelectedWard] = useState(WARDS[0].code); // Default to 01
   const [criteriaYear, setCriteriaYear] = useState('2557');
   const [limit, setLimit] = useState(WARDS[0].defaultLimit);
+  const [deadlineDays, setDeadlineDays] = useState(30);
   const [cases, setCases] = useState<AuditCase[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -55,6 +56,35 @@ export default function AuditIPD() {
   const [selectedWorksheet, setSelectedWorksheet] = useState(worksheetNames[0]);
   const [isAddingWorksheet, setIsAddingWorksheet] = useState(false);
   const [newWorksheetName, setNewWorksheetName] = useState('');
+
+  React.useEffect(() => {
+    const match = selectedWorksheet.match(/(\d{2})(0[1-4])$/);
+    if (match) {
+      const yy = parseInt(match[1]);
+      const round = match[2];
+      const gregorianYear = 2000 + yy - 43; // e.g., 69 -> 2026. (2569 => 2026)
+      
+      let start, end;
+      if (round === '01') {
+        start = `${gregorianYear - 1}-10-01`;
+        end = `${gregorianYear - 1}-12-31`;
+      } else if (round === '02') {
+        start = `${gregorianYear}-01-01`;
+        end = `${gregorianYear}-03-31`;
+      } else if (round === '03') {
+        start = `${gregorianYear}-04-01`;
+        end = `${gregorianYear}-06-30`;
+      } else if (round === '04') {
+        start = `${gregorianYear}-07-01`;
+        end = `${gregorianYear}-09-30`;
+      }
+      
+      if (start && end) {
+        setStartDate(start);
+        setEndDate(end);
+      }
+    }
+  }, [selectedWorksheet]);
 
   const handleWardChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const code = e.target.value;
@@ -188,6 +218,7 @@ export default function AuditIPD() {
       wardCode: selectedWard,
       startDate,
       endDate,
+      deadline: dayjs().add(deadlineDays, 'day').format('YYYY-MM-DD'),
       criteria_year: criteriaYear,
       createdAt: new Date().toISOString(),
       cases: cases.map(c => ({ ...c, status: 'pending' }))
@@ -305,7 +336,7 @@ export default function AuditIPD() {
           </div>
 
           {/* Filters */}
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-6 mb-8">
             <div className="md:col-span-1">
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">ตั้งแต่วันที่</label>
               <input 
@@ -324,7 +355,7 @@ export default function AuditIPD() {
                 className="w-full border border-slate-200 rounded-xl shadow-sm px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-sm font-semibold text-slate-700 transition-all"
               />
             </div>
-            <div className="md:col-span-1">
+            <div className="md:col-span-2">
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Ward</label>
               <select
                 value={selectedWard}
@@ -349,20 +380,32 @@ export default function AuditIPD() {
                 className="w-full border border-slate-200 rounded-xl shadow-sm px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-sm font-semibold text-slate-700 transition-all"
               />
             </div>
-            <div className="md:col-span-1 flex items-end">
-              <button
-                onClick={fetchRandomCases}
-                disabled={loading}
-                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-slate-200 flex justify-center items-center transition-all active:scale-95 disabled:opacity-70"
-              >
-                {loading ? (
-                  <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
-                ) : (
-                  <Search className="w-5 h-5 mr-2 text-emerald-400" />
-                )}
-                สุ่มเคส Audit
-              </button>
+            <div className="md:col-span-1">
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">เวลาส่ง (วัน)</label>
+              <input 
+                type="number" 
+                value={deadlineDays}
+                onChange={(e) => setDeadlineDays(parseInt(e.target.value) || 30)}
+                min="1"
+                max="365"
+                className="w-full border border-slate-200 rounded-xl shadow-sm px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-sm font-semibold text-slate-700 transition-all font-mono text-center text-emerald-600 bg-emerald-50"
+              />
             </div>
+          </div>
+          
+          <div className="flex justify-end mb-8">
+            <button
+              onClick={fetchRandomCases}
+              disabled={loading}
+              className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-8 rounded-xl shadow-lg shadow-slate-200 flex justify-center items-center transition-all active:scale-95 disabled:opacity-70"
+            >
+              {loading ? (
+                <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+              ) : (
+                <Search className="w-5 h-5 mr-2 text-emerald-400" />
+              )}
+              สุ่มเคส Audit
+            </button>
           </div>
 
           {error && (

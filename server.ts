@@ -80,25 +80,15 @@ async function initHosPool(config: any = hosDbConfig) {
       password: config.password,
       database: config.database,
       port: parseInt(config.port || '3306'),
-      charset: 'tis620', // Connect using tis620 standard
+      charset: 'tis620',
       connectTimeout: 3000,
       supportBigNumbers: true,
-      bigNumberStrings: true,
-      typeCast: function (field, next) {
-        if (field.type === 'VAR_STRING' || field.type === 'STRING' || field.type === 'BLOB') {
-          const buffer = field.buffer();
-          if (buffer) {
-             // Force iconv-lite to decode the raw bytes specifically as TIS-620
-            return iconv.decode(buffer, 'tis620');
-          }
-          return null;
-        }
-        return next();
-      }
+      bigNumberStrings: true
     });
     
-    // Test connection
+    // Test connection and strictly set session charset
     const conn = await hosPool.getConnection();
+    await conn.query('SET NAMES tis620');
     conn.release();
     
     console.log(`HOS MySQL pool initialized with charset: utf8`);
@@ -306,6 +296,7 @@ async function startServer() {
             wardCode VARCHAR(50),
             startDate DATE,
             endDate DATE,
+            deadline DATE,
             criteria_year VARCHAR(4) DEFAULT '2557',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
@@ -317,7 +308,8 @@ async function startServer() {
           { name: 'depCode', type: 'VARCHAR(50)' },
           { name: 'wardCode', type: 'VARCHAR(50)' },
           { name: 'startDate', type: 'DATE' },
-          { name: 'endDate', type: 'DATE' }
+          { name: 'endDate', type: 'DATE' },
+          { name: 'deadline', type: 'DATE' }
         ];
 
         for (const col of worksheetCols) {
@@ -1247,7 +1239,7 @@ async function startServer() {
       return await saveToJson();
     }
     
-    const { id, name, type, department, depCode, wardCode, startDate, endDate, criteria_year, cases } = req.body;
+    const { id, name, type, department, depCode, wardCode, startDate, endDate, deadline, criteria_year, cases } = req.body;
     
     try {
       const connection = await mraPool.getConnection();
@@ -1255,8 +1247,8 @@ async function startServer() {
       
       try {
         await connection.query(
-          'INSERT INTO worksheets (id, name, type, department, depCode, wardCode, startDate, endDate, criteria_year) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=?, type=?, department=?, depCode=?, wardCode=?, startDate=?, endDate=?, criteria_year=?',
-          [id, name, type, department, depCode || null, wardCode || null, startDate || null, endDate || null, criteria_year || '2557', name, type, department, depCode || null, wardCode || null, startDate || null, endDate || null, criteria_year || '2557']
+          'INSERT INTO worksheets (id, name, type, department, depCode, wardCode, startDate, endDate, deadline, criteria_year) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=?, type=?, department=?, depCode=?, wardCode=?, startDate=?, endDate=?, deadline=?, criteria_year=?',
+          [id, name, type, department, depCode || null, wardCode || null, startDate || null, endDate || null, deadline || null, criteria_year || '2557', name, type, department, depCode || null, wardCode || null, startDate || null, endDate || null, deadline || null, criteria_year || '2557']
         );
         
         await connection.query('DELETE FROM audit_cases WHERE worksheet_id = ?', [id]);

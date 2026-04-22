@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { FileText, Calendar, Users } from 'lucide-react';
+import { FileText, Calendar, Users, Clock } from 'lucide-react';
+import dayjs from 'dayjs';
 
 interface Worksheet {
   id: string;
@@ -8,6 +9,7 @@ interface Worksheet {
   type: 'OPD' | 'IPD';
   department: string;
   criteria_year?: string;
+  deadline?: string;
   createdAt: string;
   cases: any[];
 }
@@ -176,13 +178,29 @@ export default function WorksheetList() {
                             <div className="grid grid-cols-2 gap-4 mb-6">
                               <div className="flex items-center text-xs font-semibold text-slate-500">
                                 <Calendar className="w-3.5 h-3.5 mr-2 text-slate-400" />
-                                <span>{new Date(ws.createdAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}</span>
+                                <span>{ws.createdAt ? new Date(ws.createdAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : '-'}</span>
                               </div>
                               <div className="flex items-center text-xs font-semibold text-slate-500">
                                 <Users className="w-3.5 h-3.5 mr-2 text-slate-400" />
                                 <span>{totalCount} เคส</span>
                               </div>
                             </div>
+
+                            {/* Deadline info */}
+                            {!isCompleted && (
+                              <div className="mb-4 flex items-center justify-between bg-red-50 px-3 py-2 rounded-lg border border-red-100">
+                                <div className="flex items-center text-red-600 text-xs font-bold">
+                                  <Clock className="w-3.5 h-3.5 mr-1.5" />
+                                  <span>กำหนดส่ง: {dayjs(ws.deadline || dayjs(ws.createdAt || new Date()).add(30, 'day')).format('DD/MM/YYYY')}</span>
+                                </div>
+                                <span className={`text-[10px] font-black px-2 py-0.5 rounded text-white ${dayjs(ws.deadline || dayjs(ws.createdAt || new Date()).add(30, 'day')).diff(dayjs(), 'day') < 0 ? 'bg-red-600' : 'bg-orange-500'}`}>
+                                  {(() => {
+                                    const days = dayjs(ws.deadline || dayjs(ws.createdAt || new Date()).add(30, 'day')).diff(dayjs(), 'day');
+                                    return days < 0 ? `เลยกำหนด ${Math.abs(days)} วัน` : `เหลือ ${days} วัน`;
+                                  })()}
+                                </span>
+                              </div>
+                            )}
 
                             <div className="space-y-3">
                               <div className="flex justify-between items-end">

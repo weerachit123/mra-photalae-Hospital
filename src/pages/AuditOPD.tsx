@@ -7,9 +7,12 @@ interface AuditCase {
   hn: string;
   vstdate: string;
   doctor_name: string;
+  depCode?: string;
+  depName?: string;
 }
 
 const DEPARTMENTS = [
+  { code: 'ALL', name: 'รวมทุกแผนก (ดึงตามจำนวนที่กำหนด)', defaultLimit: 0 },
   { code: '028', name: 'ผู้ป่วยนอก', defaultLimit: 9 },
   { code: '021', name: 'โรคเรื้อรัง', defaultLimit: 13 },
   { code: '005', name: 'ทันตกรรม', defaultLimit: 4 },
@@ -39,6 +42,7 @@ export default function AuditOPD() {
   const [selectedDep, setSelectedDep] = useState(DEPARTMENTS[6].code); // Default to 042
   const [criteriaYear, setCriteriaYear] = useState('2557');
   const [limit, setLimit] = useState(DEPARTMENTS[6].defaultLimit);
+  const [deadlineDays, setDeadlineDays] = useState(30);
   const [cases, setCases] = useState<AuditCase[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -74,6 +78,35 @@ export default function AuditOPD() {
   const [selectedWorksheet, setSelectedWorksheet] = useState(worksheetNames[0]);
   const [isAddingWorksheet, setIsAddingWorksheet] = useState(false);
   const [newWorksheetName, setNewWorksheetName] = useState('');
+
+  React.useEffect(() => {
+    const match = selectedWorksheet.match(/(\d{2})(0[1-4])$/);
+    if (match) {
+      const yy = parseInt(match[1]);
+      const round = match[2];
+      const gregorianYear = 2000 + yy - 43; // e.g., 69 -> 2026. (2569 => 2026)
+      
+      let start, end;
+      if (round === '01') {
+        start = `${gregorianYear - 1}-10-01`;
+        end = `${gregorianYear - 1}-12-31`;
+      } else if (round === '02') {
+        start = `${gregorianYear}-01-01`;
+        end = `${gregorianYear}-03-31`;
+      } else if (round === '03') {
+        start = `${gregorianYear}-04-01`;
+        end = `${gregorianYear}-06-30`;
+      } else if (round === '04') {
+        start = `${gregorianYear}-07-01`;
+        end = `${gregorianYear}-09-30`;
+      }
+      
+      if (start && end) {
+        setStartDate(start);
+        setEndDate(end);
+      }
+    }
+  }, [selectedWorksheet]);
 
   const handleDepChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const code = e.target.value;
@@ -114,27 +147,64 @@ export default function AuditOPD() {
     setLoading(true);
     setError('');
     setIsMock(false);
+    setCases([]);
     
     try {
-      const response = await fetch('/api/audit/opd/random', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ startDate, endDate, limit, depCode: selectedDep }),
-      });
+      if (selectedDep === 'ALL') {
+        const departmentsToFetch = DEPARTMENTS.filter(d => d.code !== 'ALL');
+        let allCases: AuditCase[] = [];
+        let anyMock = false;
 
-      const data = await response.json();
-
-      if (data.success) {
-        setCases(data.data);
-        setIsMock(data.mock || false);
-        if (data.data.length === 0) {
-          setError('ไม่พบข้อมูลเคสตามเงื่อนไขที่กำหนด กรุณาลองเปลี่ยนวันที่หรือแผนก');
+        for (const dep of departmentsToFetch) {
+          try {
+            const response = await fetch('/api/audit/opd/random', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ startDate, endDate, limit: dep.defaultLimit, depCode: dep.code }),
+            });
+            const data = await response.json();
+            if (data.success && data.data) {
+              const depCases = data.data.map((c: any) => ({
+                ...c,
+                depCode: dep.code,
+                depName: dep.name
+              }));
+              allCases = [...allCases, ...depCases];
+              if (data.mock) anyMock = true;
+            }
+          } catch (e) {
+            console.error(`Failed to fetch for department ${dep.name}`, e);
+          }
         }
-        if (data.mock) {
-          setIsMock(true);
+        
+        setCases(allCases);
+        setIsMock(anyMock);
+        if (allCases.length === 0) {
+          setError('ไม่พบข้อมูลเคสตามเงื่อนไขที่กำหนด กรุณาลองเปลี่ยนวันที่');
         }
       } else {
-        setError(data.message || 'เกิดข้อผิดพลาดในการดึงข้อมูล');
+        const response = await fetch('/api/audit/opd/random', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ startDate, endDate, limit, depCode: selectedDep }),
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          const fetchedCases = data.data.map((c: any) => ({
+            ...c,
+            depCode: selectedDep,
+            depName: DEPARTMENTS.find(d => d.code === selectedDep)?.name
+          }));
+          setCases(fetchedCases);
+          setIsMock(data.mock || false);
+          if (fetchedCases.length === 0) {
+            setError('ไม่พบข้อมูลเคสตามเงื่อนไขที่กำหนด กรุณาลองเปลี่ยนวันที่หรือแผนก');
+          }
+        } else {
+          setError(data.message || 'เกิดข้อผิดพลาดในการดึงข้อมูล');
+        }
       }
     } catch (err) {
       setError('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้');
@@ -168,6 +238,9 @@ export default function AuditOPD() {
 
   const refreshSingleCase = async (index: number) => {
     try {
+      const caseToRefresh = cases[index];
+      const refreshDepCode = caseToRefresh.depCode || selectedDep;
+      
       const response = await fetch('/api/audit/opd/random', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -175,8 +248,8 @@ export default function AuditOPD() {
           startDate, 
           endDate, 
           limit: 1, 
-          depCode: selectedDep,
-          excludeHns: cases.map(c => c.hn) // Pass existing HNs to exclude them
+          depCode: refreshDepCode,
+          excludeHns: cases.filter(c => c.depCode === refreshDepCode || (selectedDep !== 'ALL')).map(c => c.hn) // Pass existing HNs to exclude them
         }),
       });
 
@@ -184,7 +257,11 @@ export default function AuditOPD() {
 
       if (data.success && data.data.length > 0) {
         const newCases = [...cases];
-        newCases[index] = data.data[0];
+        newCases[index] = {
+           ...data.data[0],
+           depCode: refreshDepCode,
+           depName: DEPARTMENTS.find(d => d.code === refreshDepCode)?.name || refreshDepCode
+        };
         setCases(newCases);
       }
     } catch (err) {
@@ -198,41 +275,79 @@ export default function AuditOPD() {
       return;
     }
     setSaving(true);
-    const depName = DEPARTMENTS.find(d => d.code === selectedDep)?.name || selectedDep;
     
-    const newWorksheet = {
-      id: `ws_${Date.now()}`,
-      name: selectedWorksheet,
-      type: 'OPD',
-      department: depName,
-      depCode: selectedDep,
-      startDate,
-      endDate,
-      criteria_year: criteriaYear,
-      createdAt: new Date().toISOString(),
-      cases: cases.map(c => ({ ...c, status: 'pending' }))
-    };
-
     try {
-      const response = await fetch('/api/mra/worksheets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newWorksheet)
-      });
-      const data = await response.json();
-      if (data.success) {
-        alert(`สร้างใบงาน "${selectedWorksheet}" สำหรับแผนก ${depName} จำนวน ${cases.length} เคส เรียบร้อยแล้ว`);
+      if (selectedDep === 'ALL') {
+        const groupedCases = cases.reduce((acc, currentCase) => {
+          const code = currentCase.depCode || 'unknown';
+          if (!acc[code]) acc[code] = [];
+          acc[code].push(currentCase);
+          return acc;
+        }, {} as Record<string, AuditCase[]>);
+
+        for (const [code, depCasesValue] of Object.entries(groupedCases)) {
+          const depCases = depCasesValue as AuditCase[];
+          if (depCases.length === 0) continue;
+          
+          const depName = DEPARTMENTS.find(d => d.code === code)?.name || code;
+          const newWorksheet = {
+            id: `ws_${Date.now()}_${code}`,
+            name: selectedWorksheet,
+            type: 'OPD',
+            department: depName,
+            depCode: code,
+            startDate,
+            endDate,
+            deadline: dayjs().add(deadlineDays, 'day').format('YYYY-MM-DD'),
+            criteria_year: criteriaYear,
+            createdAt: new Date().toISOString(),
+            cases: depCases.map(c => ({ ...c, status: 'pending' }))
+          };
+          
+          const response = await fetch('/api/mra/worksheets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newWorksheet)
+          });
+          const data = await response.json();
+          if (!data.success) {
+            console.error(`Failed to create worksheet for ${depName}`, data.message);
+          }
+        }
+        alert(`สร้างใบงาน "${selectedWorksheet}" สำหรับแผนกทั้งหมด จำนวน ${cases.length} เคส เรียบร้อยแล้ว`);
         navigate('/dashboard/worksheets');
       } else {
-        throw new Error(data.message);
+        const depName = DEPARTMENTS.find(d => d.code === selectedDep)?.name || selectedDep;
+        const newWorksheet = {
+          id: `ws_${Date.now()}`,
+          name: selectedWorksheet,
+          type: 'OPD',
+          department: depName,
+          depCode: selectedDep,
+          startDate,
+          endDate,
+          deadline: dayjs().add(deadlineDays, 'day').format('YYYY-MM-DD'),
+          criteria_year: criteriaYear,
+          createdAt: new Date().toISOString(),
+          cases: cases.map(c => ({ ...c, status: 'pending' }))
+        };
+
+        const response = await fetch('/api/mra/worksheets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newWorksheet)
+        });
+        const data = await response.json();
+        if (data.success) {
+          alert(`สร้างใบงาน "${selectedWorksheet}" สำหรับแผนก ${depName} จำนวน ${cases.length} เคส เรียบร้อยแล้ว`);
+          navigate('/dashboard/worksheets');
+        } else {
+          throw new Error(data.message);
+        }
       }
     } catch (error) {
       console.error('Failed to save worksheet to DB:', error);
-      // Fallback to localStorage
-      const existing = JSON.parse(localStorage.getItem('mra_worksheets') || '[]');
-      localStorage.setItem('mra_worksheets', JSON.stringify([...existing, newWorksheet]));
-      alert(`สร้างใบงาน "${selectedWorksheet}" เรียบร้อยแล้ว (บันทึกในเครื่อง)`);
-      navigate('/dashboard/worksheets');
+      alert(`ไม่สามารถเชื่อมต่อฐานข้อมูลได้ หรือเกิดข้อผิดพลาดในการสร้างใบงาน`);
     } finally {
       setSaving(false);
     }
@@ -325,7 +440,7 @@ export default function AuditOPD() {
           </div>
 
           {/* Filters */}
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-6 mb-8">
             <div className="md:col-span-1">
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">ตั้งแต่วันที่</label>
               <input 
@@ -344,7 +459,7 @@ export default function AuditOPD() {
                 className="w-full border border-slate-200 rounded-xl shadow-sm px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-semibold text-slate-700 transition-all"
               />
             </div>
-            <div className="md:col-span-1">
+            <div className="md:col-span-2">
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">แผนก</label>
               <select
                 value={selectedDep}
@@ -369,20 +484,32 @@ export default function AuditOPD() {
                 className="w-full border border-slate-200 rounded-xl shadow-sm px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-semibold text-slate-700 transition-all"
               />
             </div>
-            <div className="md:col-span-1 flex items-end">
-              <button
-                onClick={fetchRandomCases}
-                disabled={loading}
-                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg shadow-slate-200 flex justify-center items-center transition-all active:scale-95 disabled:opacity-70"
-              >
-                {loading ? (
-                  <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
-                ) : (
-                  <Search className="w-5 h-5 mr-2 text-blue-400" />
-                )}
-                สุ่มเคส Audit
-              </button>
+            <div className="md:col-span-1">
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">กำหนดระยะเวลาส่ง (วัน)</label>
+              <input 
+                type="number" 
+                value={deadlineDays}
+                onChange={(e) => setDeadlineDays(parseInt(e.target.value) || 30)}
+                min="1"
+                max="365"
+                className="w-full border border-slate-200 rounded-xl shadow-sm px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-semibold text-slate-700 transition-all font-mono text-center text-blue-600 bg-blue-50"
+              />
             </div>
+          </div>
+          
+          <div className="flex justify-end mb-8">
+            <button
+              onClick={fetchRandomCases}
+              disabled={loading}
+              className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-8 rounded-xl shadow-lg shadow-slate-200 flex justify-center items-center transition-all active:scale-95 disabled:opacity-70"
+            >
+              {loading ? (
+                <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+              ) : (
+                <Search className="w-5 h-5 mr-2 text-blue-400" />
+              )}
+              สุ่มเคส Audit
+            </button>
           </div>
 
           {error && (
@@ -417,6 +544,9 @@ export default function AuditOPD() {
                     HN
                   </th>
                   <th scope="col" className="px-6 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                    แผนก
+                  </th>
+                  <th scope="col" className="px-6 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                     วันที่รับบริการ
                   </th>
                   <th scope="col" className="px-6 py-4 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">
@@ -436,6 +566,9 @@ export default function AuditOPD() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-slate-800">
                         {c.hn}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-blue-600">
+                        {c.depName || '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-600">
                         {dayjs(c.vstdate).format('DD/MM/YYYY')}
@@ -480,7 +613,7 @@ export default function AuditOPD() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={5} className="px-6 py-16 text-center">
+                    <td colSpan={6} className="px-6 py-16 text-center">
                       <div className="flex flex-col items-center">
                         <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mb-3">
                           <Search className="w-6 h-6 text-slate-300" />

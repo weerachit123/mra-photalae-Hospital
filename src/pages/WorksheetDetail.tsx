@@ -12,6 +12,7 @@ interface Worksheet {
   wardCode?: string;
   startDate?: string;
   endDate?: string;
+  deadline?: string;
   createdAt: string;
   cases: any[];
 }
@@ -217,10 +218,26 @@ export default function WorksheetDetail() {
                   {worksheet.type}
                 </span>
               </div>
-              <p className="mt-1 text-sm text-slate-500 font-medium">
-                <span className="text-slate-400">แผนก/วอร์ด:</span> {worksheet.department} 
-                <span className="mx-2 text-slate-300">|</span> 
-                <span className="text-slate-400">สร้างเมื่อ:</span> {worksheet.createdAt ? dayjs(worksheet.createdAt).format('DD/MM/YYYY') : '-'}
+              <p className="mt-1 text-sm text-slate-500 font-medium flex items-center">
+                <span className="text-slate-400">แผนก/วอร์ด:</span> <span className="ml-1 mr-2">{worksheet.department}</span> 
+                <span className="text-slate-300">|</span> 
+                <span className="text-slate-400 ml-2 mr-1">สร้างเมื่อ:</span> {worksheet.createdAt ? dayjs(worksheet.createdAt).format('DD/MM/YYYY') : '-'}
+                
+                {worksheet.cases.filter(c => c.status === 'audited').length !== worksheet.cases.length && (
+                  <>
+                    <span className="mx-2 text-slate-300">|</span>
+                    <span className="text-red-500 font-bold flex items-center">
+                      <Clock className="w-3.5 h-3.5 mr-1" />
+                      กำหนดส่ง: {dayjs(worksheet.deadline || dayjs(worksheet.createdAt || new Date()).add(30, 'day')).format('DD/MM/YYYY')} 
+                      <span className={`ml-2 px-1.5 py-0.5 text-[10px] text-white rounded ${dayjs(worksheet.deadline || dayjs(worksheet.createdAt || new Date()).add(30, 'day')).diff(dayjs(), 'day') < 0 ? 'bg-red-600' : 'bg-orange-500'}`}>
+                        {(() => {
+                          const days = dayjs(worksheet.deadline || dayjs(worksheet.createdAt || new Date()).add(30, 'day')).diff(dayjs(), 'day');
+                          return days < 0 ? `เลยกำหนด ${Math.abs(days)} วัน` : `เหลือ ${days} วัน`;
+                        })()}
+                      </span>
+                    </span>
+                  </>
+                )}
               </p>
             </div>
           </div>
