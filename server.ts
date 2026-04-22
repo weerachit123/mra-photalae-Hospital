@@ -76,11 +76,17 @@ async function initHosPool(config: any = hosDbConfig) {
     hosPool = mysql.createPool({
       ...config,
       charset: 'binary', // Force binary to get raw bytes
+      supportBigNumbers: true,
+      bigNumberStrings: true,
       typeCast: function (field, next) {
-        if (field.type === 'VAR_STRING' || field.type === 'STRING' || field.type === 'BLOB' || field.type === 'TEXT') {
+        // All string-like types including BLOBs which HosXP sometimes uses for text
+        const stringTypes = [
+          'VAR_STRING', 'STRING', 'BLOB', 'TEXT', 'TINY_BLOB', 'MEDIUM_BLOB', 'LONG_BLOB'
+        ];
+        
+        if (stringTypes.includes(field.type)) {
           const buf = field.buffer();
           if (buf) {
-            // Use the configured charset for decoding
             return iconv.decode(buf, charset);
           }
           return null;
@@ -236,7 +242,7 @@ async function startServer() {
         throw connError;
       }
       
-      await tempConn.query(`CREATE DATABASE IF NOT EXISTS \`${config.database || 'mra_audit'}\` CHARACTER SET utf8 COLLATE utf8_general_ci`);
+      await tempConn.query(`CREATE DATABASE IF NOT EXISTS \`${config.database || 'mra_audit'}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
       await tempConn.end();
       
       // 2. Re-initialize MRA Pool with the correct database
@@ -258,7 +264,7 @@ async function startServer() {
             default_limit INT DEFAULT 10,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE KEY code_type (code, type)
-          )
+          ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
         `);
 
         // Insert default departments if table is empty
@@ -300,7 +306,7 @@ async function startServer() {
             endDate DATE,
             criteria_year VARCHAR(4) DEFAULT '2557',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-          )
+          ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
         `);
         
         // Add new columns if they don't exist (for existing databases)
@@ -335,7 +341,7 @@ async function startServer() {
             auditor_name VARCHAR(255),
             audit_date DATETIME,
             FOREIGN KEY (worksheet_id) REFERENCES worksheets(id) ON DELETE CASCADE
-          )
+          ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
         `);
         
         // Add missing columns to audit_cases (for existing databases)
@@ -358,7 +364,7 @@ async function startServer() {
             criteria_key VARCHAR(100) NOT NULL,
             score VARCHAR(10) NOT NULL,
             FOREIGN KEY (case_id) REFERENCES audit_cases(id) ON DELETE CASCADE
-          )
+          ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
         `);
         
         await connection.query(`
@@ -368,7 +374,7 @@ async function startServer() {
             criteria_key VARCHAR(100) NOT NULL,
             reason TEXT NOT NULL,
             FOREIGN KEY (case_id) REFERENCES audit_cases(id) ON DELETE CASCADE
-          )
+          ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
         `);
 
         await connection.query(`
@@ -380,7 +386,7 @@ async function startServer() {
             password VARCHAR(255),
             is_active BOOLEAN DEFAULT TRUE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-          )
+          ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
         `);
 
         await connection.query(`
@@ -391,7 +397,7 @@ async function startServer() {
             FOREIGN KEY (loginname) REFERENCES users(loginname) ON DELETE CASCADE,
             FOREIGN KEY (worksheet_id) REFERENCES worksheets(id) ON DELETE CASCADE,
             UNIQUE KEY (loginname, worksheet_id)
-          )
+          ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
         `);
 
         await connection.query(`
@@ -401,7 +407,7 @@ async function startServer() {
             department_name VARCHAR(255) NOT NULL,
             FOREIGN KEY (loginname) REFERENCES users(loginname) ON DELETE CASCADE,
             UNIQUE KEY (loginname, department_name)
-          )
+          ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
         `);
         
         // Save config

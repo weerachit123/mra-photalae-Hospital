@@ -18,16 +18,16 @@ echo [INFO] Installing required packages... (Please wait)
 call npm install
 
 echo.
-echo [INFO] Starting server on Port 3001...
+echo [INFO] Starting server on Port 3000...
 echo [INFO] If Windows Security Alert (Firewall) appears, please click "Allow access"
 echo.
 
 REM Set Port
-set PORT=3001
+set PORT=3000
 
 REM Wait 3 seconds and open browser
 timeout /t 3 >nul
-start http://localhost:3001
+start http://localhost:3000
 
 REM Run the server
 call npm run dev
